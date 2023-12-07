@@ -10,12 +10,15 @@ EndIf
 InitKeyboard()
 InitMouse()
 
-#AppTitle$ = "sho.co 2"
+#AppTitle$ = "sho.co"
 #NewFileName$ = "*New*"
 
-#SCR_BACKGROUND = $302520
 #NbDecimals = 4
-#CHECK_RAM = 1
+#PROTECT_RAM = 1
+
+CompilerIf #PB_Compiler_Debugger
+;	MessageRequester(#AppTitle$, "For more speed, deactivate the debugger.", #PB_MessageRequester_Info)
+CompilerEndIf
 
 CompilerIf #PB_Compiler_OS = #PB_OS_Windows
 	#NL$ = #CRLF$
@@ -31,6 +34,7 @@ Enumeration ENUM_MENU 1
 	#m_Undo
 	#m_Redo
 	#m_Close
+	#m_CopyMonitor
 	#m_Quit
 	#m_Parse
 	#m_ParseRun
@@ -48,9 +52,10 @@ Enumeration ENUM_MENU 1
 	#m_Run
 	#m_Step
 	#m_StepOut
-	#m_ExportC
 	#m_Hilight
 	#m_Monitor
+	#m_MonitorUp
+	#m_MonitorDown
 EndEnumeration
 
 Enumeration
@@ -65,6 +70,8 @@ Enumeration ENUM_GADGET 1
 	#g_SplitterMonitor
 	#g_Error
 	#g_Monitor
+	#g_VarSort
+	#g_VarContainer
 	#g_Variables
 	#g_SubContainer
 	#g_Sub
@@ -73,6 +80,7 @@ Enumeration ENUM_GADGET 1
 	#g_SearchPrev
 	#g_SearchNext
 	#g_SearchOptions
+	#g_Debug
 	#g_Help
 EndEnumeration
 
@@ -80,6 +88,7 @@ Enumeration ENUM_WINDOW 1
 	#w_Main
 	#w_Screen
 	#w_Monitor
+	#w_Debug
 	#w_Help
 EndEnumeration
 
@@ -98,13 +107,17 @@ Enumeration ENUM_ADDRESSMODE
 	#ADR_INDX_IN =  %1000
 EndEnumeration
 
-Enumeration	
+Enumeration	SYMBOL_TABLE_ENTRY
+	#SYM_NULL
 	#SYM_INT
 	#SYM_FLOAT	
+	#SYM_CHAR
+	#SYM_ARRAY
 	#SYM_CONSTANT
 	#SYM_STRING
 	#SYM_OPCODE
 	#SYM_VARIABLE
+	#SYM_SUBPARAM
 	#SYM_SUB
 	#SYM_ADDRESS
 	#SYM_LABEL
@@ -122,7 +135,9 @@ EnumerationBinary ENUM_RUNSTATE
 EndEnumeration
 
 EnumerationBinary ENUM_READSTATE
+	#READ_MACRO
 	#READ_SUB
+	#READ_PARAM
 	#READ_IF
 	#READ_ELSE
 	#READ_LOOP
@@ -130,23 +145,56 @@ EndEnumeration
 
 Enumeration ENUM_TOKENTYPE
 	#T_UNKNOWN
+	#T_DEFINE
+	#T_SUB
+	#T_CONSTANT
+	#T_FIELD
+	#T_LABEL
+	#T_MACRO
 	#T_OPCODE
 	#T_VARIABLE
+	#T_INT
+	#T_FLOAT
+	#T_CHAR
 	#T_PERIOD
 	#T_NUMBER
-	#T_SUB
-	#T_LABEL
 	#T_BRACKET_OPEN
 	#T_BRACKET_CLOSE
 	#T_NEWLINE
 	#T_SEPARATOR
-	#T_FIELD
+	#T_EQUAL
 	#T_ELSE	
+	#T_RETURN
 	#T_BREAK
 	#T_STRING
 	#T_COMMENT
 	#T_SOUND
 EndEnumeration
+
+Global Dim TokenName.s(255)
+TokenName(#T_UNKNOWN) = "UNKNOWN"
+TokenName(#T_OPCODE) = "OPCODE"
+TokenName(#T_CONSTANT) = "CONSTANT"
+TokenName(#T_VARIABLE) = "VARIABLE"
+TokenName(#T_INT) = "INT"
+TokenName(#T_FLOAT) = "FLOAT"
+TokenName(#T_CHAR) = "CHAR"
+TokenName(#T_PERIOD) = "PERIOD"
+TokenName(#T_NUMBER) = "NUMBER"
+TokenName(#T_SUB) = "SUB"
+TokenName(#T_MACRO) = "MACRO"
+TokenName(#T_LABEL) = "LABEL"
+TokenName(#T_BRACKET_OPEN) = "BRACKET_OPEN"
+TokenName(#T_BRACKET_CLOSE) = "BRACKET_CLOSE"
+TokenName(#T_NEWLINE) = "NEWLINE"
+TokenName(#T_SEPARATOR) = "SEPARATOR"
+TokenName(#T_EQUAL) = "EQUAL"
+TokenName(#T_FIELD) = "FIELD"
+TokenName(#T_ELSE) = "ELSE"
+TokenName(#T_BREAK) = "BREAK"
+TokenName(#T_STRING) = "STRING"
+TokenName(#T_COMMENT) = "COMMENT"
+TokenName(#T_SOUND) = "SOUND"
 
 EnumerationBinary
 	#Button_Left
@@ -154,63 +202,83 @@ EnumerationBinary
 EndEnumeration
 
 Enumeration ENUM_OPCODE
-	#_END = 0
-	#_KIL
-	#_SET
-	#_INT
-	#_NTH
-	#_CIL
-	#_MOV
-	#_RND
-	#_WRT
-	#_ADD
-	#_SUB
-	#_MUL
-	#_DIV
-	#_POW
-	#_MOD
-	#_NEG
-	#_ABS
-	#_MIN
-	#_MAX
-	#_SGN
-	#_JMP
-	#_JMF
-	#_STP
-	#_TO
-	#_IFL
-	#_ILO
-	#_IGR
-	#_ILE
-	#_IGE
-	#_IEQ
-	#_INE
-	#_PSH
-	#_POP
-	#_PSF
-	#_POF
-	#_PSC
-	#_POC
-	#_CAL
-	#_RET
-	#_CHS
-	#_CHM
-	#_CXY
-	#_CHR
-	#_CLF
-	#_CLB
-	#_PLT
-	#_SCR
-	#_DRW
-	#_CLS
-	#_INP
-	#_KEY
-	#_SNP
-	#_SNS
-	#_DLY
-	#_DBG
-	#_HLT
+	#OP_END = 0
+	#OP_KIL
+	#OP_GET
+	#OP_SET
+	#OP_INT
+	#OP_NTH
+	#OP_CIL
+	#OP_RSD
+	#OP_RND
+	#OP_ADD
+	#OP_SUB
+	#OP_MUL
+	#OP_DIV
+	#OP_SQR
+	#OP_POW
+	#OP_SHL
+	#OP_SHR
+	#OP_AND
+	#OP__OR
+	#OP_MOD
+	#OP_NEG
+	#OP_ABS
+	#OP_MIN
+	#OP_MAX
+	#OP_SGN
+	#OP_JMP
+	#OP_JMF
+	#OP_STP
+	#OP_TO
+	#OP_IFL
+	#OP_ILO
+	#OP_IGR
+	#OP_ILE
+	#OP_IGE
+	#OP_IEQ
+	#OP_INE
+	#OP_GSP
+	#OP_ADS
+	#OP_PSH
+	#OP_POP
+	#OP_PUI
+	#OP_POI
+	#OP_PUS
+	#OP_POS
+	#OP_PUV
+	#OP_POV
+	#OP_PUF
+	#OP_POF
+	#OP_PUC
+	#OP_POC
+	#OP_PUX
+	#OP_POX
+	#OP_CHS
+	#OP_CHM
+	#OP_CXY
+	#OP_CHR
+	#OP_PAL
+	#OP_CLF
+	#OP_CLB
+	#OP_PLT
+	#OP_SCR
+	#OP_DRW
+	#OP_DRS
+	#OP_CLS
+	#OP_INP
+	#OP_KEY
+	#OP_SNP
+	#OP_SNS
+	#OP_DLY
+	#OP_DBG
+	#OP_HLT
 EndEnumeration
+
+Structure KEYWORD
+	type.a
+	name.s
+EndStructure
 
 Structure TOKEN
 	type.a
@@ -223,11 +291,11 @@ Structure TOKEN
 EndStructure
 
 Structure OPCODE
+	mnemonic.s
 	name.s
 	ID.a
 	nParams.i
 	size.i
-	procAddress.i
 	ip.i
 EndStructure
 
@@ -240,12 +308,26 @@ Structure ExitList
 	*data.DATASECT
 EndStructure
 
-Structure VARIABLE
+Structure VARLIST
+	*var.VARIABLE
+	sub.s
 	name.s
+	type.s
+	address.s
+	value.s
+EndStructure
+
+Structure VARIABLE
+	*sub.SUB
+	*token.TOKEN
+	name.s
+	type.a
 	key.s
 	adr.i
 	prevValue.d
 	infoLineNr.i
+	isLocal.a
+	isParam.a
 EndStructure
 
 Structure CONSTANT
@@ -257,22 +339,53 @@ Structure CONSTANT
 EndStructure
 
 Structure DATASECT
-	type.i
+	isSub.a
+	isLabel.a
+	isField.a
+	
+	*sub.SUB
 	*token.TOKEN
 	startAdr.i
 	endAdr.i
 	lineNr.i
 EndStructure
 
+Structure XMACRO
+	name.s
+	firstTokenIndex.i
+	lastTokenIndex.i
+	firstLineNr.i
+	lastLineNr.i
+	Map *arguments.TOKEN()
+	List *argList.TOKEN()
+EndStructure
+
+Structure XMACROCALL
+	nextTokenIndex.i
+	codeLine.i
+	*xMacro.XMACRO
+	Map *replace.Token()
+EndStructure
+
+Structure SUB
+	name.s
+	*parent.SUB
+	*dataSect.DATASECT
+	nrParams.i
+	List *vars.VARIABLE()
+	List ret.i()
+	Map var.VARIABLE()
+	Map sub.SUB()
+EndStructure
+
 Structure CPU
-	Array RAM.d(0)						; memory ram
-	Array VRAM.u(0)						; video ram
-	Array STACK.d(0)					; stack ram
+	Array RAM.d(0)						; memory
+	Array VRAM.l(0)						; video ram
 	IP.i                                ; instruction pointer
 	SP.i                                ; stack pointer
-	V.i									; V-Register holds address of current variable	
-	X.i									; X-Register holds the current LOOP variable
-	C.d									; C-Register
+	V.i									; V-Register
+ 	X.i									; X-Register
+ 	C.d									; C-Register
 	FLAGS.i								; flag register
 EndStructure
 
@@ -293,16 +406,16 @@ Structure SYSTEM
 	Array symTable.SYMTABLE(0)
 	
 	adrMode.a							; current addressing mode (encoded in opcode)
-								  		; bit 7    param is array indirect address A.B = 1
-										; bit 6    param is array direct address A.1 = 2
-										; bit 4-5  param #3
-										; bit 2-3  param #2
-										; bit 0-1  param #1
+								  		; bit 3 and 7    param is indexed indirect address (A.B)
+										; bit 2 and 6    param is indexed direct address (A.1)
+										; bit 1 and 5    set = param is a pointer
+										; bit 0 and 4    set = indirect address, not set = direct address
 	
 	RAM_Size.i                          ; size of RAM
 	STACK_Size.i                        ; size of STACK
 	VRAM_Size.i							; total size of Video-RAM
 	
+	ADR_Palette.i						; 0 = no palette (rgb values), 1 = use palette
 	ADR_Color.i							; address of rgb values
 	ADR_COL_Front.i						; current front color
 	ADR_COL_Back.i						; current back color
@@ -314,8 +427,10 @@ Structure SYSTEM
 	ADR_Time.i							; address of system time
 	ADR_CollisionID.i					; address of collision ID
 	ADR_Collision.i						; address of collision info
-	ADR_VarPointer.i					; points to current variable position
-	ADR_Var.i							; start address of variables
+	ADR_StackEnd.i						; end address of variables
+	ADR_StackStart.i					; start address of variables
+	ADR_VarStart.i						; start address of variables
+	ADR_Var.i							; current variable address
 	
 	wait.i                              ; delay time for DLY command
 	state.i								; current state
@@ -336,11 +451,14 @@ Structure SYSTEM
 	programSize.i                       ; size of program
 	startTime.i
 	time.i
-	
+
 	Map sound.i()
+	
 EndStructure
 
 Structure PARSER
+	preParse.a
+	
 	tokenIndex.i
 	tokenCount.i
 	
@@ -349,23 +467,25 @@ Structure PARSER
 	
 	curAdrMode.i
 	curIP.i
-	*curLine.CODELINE
+	*curSub.SUB
 	*curOpcode.OPCODE
-	*curField.FIELD
+	*curLine.CODELINE
+	*curField.DATASECT
 	*curDataSect.DATASECT
 	*curVar.VARIABLE
 	*curToken.TOKEN
+	curVarType.a
 	
-	paramNr.i
 	readState.i
 	stringIndex.i
+	loopDepth.i
 	
 	Array token.Token(0)	
 	
-	Map constant.CONSTANT()
-	Map var.VARIABLE()
+	main.SUB
 	
-	Map *sub.DATASECT()
+  	Map xmacro.XMACRO()
+  	Map *sub.SUB()
 	Map *label.DATASECT()
 	Map *field.DATASECT()
 	
@@ -374,6 +494,7 @@ Structure PARSER
 	
 	List brakeList.ExitList()
 	List bracketList.ExitList()
+	List curMacro.XMACROCALL()
 EndStructure
 
 Structure FILE
@@ -382,39 +503,45 @@ Structure FILE
 	isNew.i
 EndStructure
 
+Global RamSize, StackSize
 Global VarAddress.i, VarAddressMode.a, VarIndex.i
 Global System.SYSTEM
 Global *CPU.CPU
-Global Parser.PARSER
-Global NewList File.FILE()
 Global *CurrentFile.File
+Global Parser.PARSER
 Global Dim Opcode.OPCODE(255)
+Global NewList File.FILE()
 Global NewMap *Opcode.OPCODE()
-Global NewMap KeyWord.i()
+Global NewMap KeyWord.KEYWORD()
+Global NewMap Constant.CONSTANT()
 Global MonitorVisible, Window_X = 100, Window_Y = 100
 Global RunState.i
 Global SCR_PixelSize = 1
 Global Font = LoadFont(#PB_Any, "Consolas", 10)
 
+Global valF1.d, valF2.d, valI1, valI2, valL.l, valA.a, valS.s, valAdr, arrIndex
+
 Declare File_Add(path.s = "", newFile = #False)
-Declare File_Open(path.s, newFile = #False)
-Declare File_Close(*file.FILE)
+Declare File_Open(path.s, newFile = #False, activate = #False)
+Declare File_Close(*file.FILE, quit = #False, saveChanges = #True)
 Declare File_Activate(*file.File, carretPos = -1, parse = #False)
 Declare File_UpdateIni()
 Declare System_Init(ramSize, stackSize)
 Declare System_RunState(state, updateGadget = #True)
 Declare System_CloseScreen(CloseScreen = #False)
 Declare System_Update_Editor(*file.FILE, init = #False)
-Declare System_Update_Variable(wait = #True, initList = #False)
-Declare System_Update_Monitor(ip)
-Declare System_Parse(*file.FILE, run = #False)
+Declare System_Update_VarList(*sub.SUB, wait = #True, init = #False)
+Declare System_Update_Monitor(ip, direction = 0)
+Declare System_Parse(*file.FILE, parseFull = #True, run = #False)
 Declare System_Error(line, message.s, warning = 0)
-Declare Parse_NextType(direction, tokenType = -1, value.s = "")
-Declare Parse_IsNumber(param.s)
 Declare System_VarByIP(ip)
 Declare System_LineNrByIP(ip)
-Declare Parse_Start(code.s)
-Declare Parse(readState = 0, depth = 0)
+Declare Tokenize_Start()
+Declare Parse_NextType(direction, tokenType = -1, value.s = "")
+Declare Parse_IsNumber(param.s)
+Declare Parse_Start(*file.FILE, parseFull = #True)
+Declare Parse_First(*sub.SUB, readMode, depth)
+Declare Parse_Main(*sub.SUB, readState, depth)
 Declare Event_Window()
 Declare Event_Gadget()
 Declare Event_Menu()
@@ -430,21 +557,39 @@ Macro TIMESTR()
 EndMacro
 
 Macro SETVAL(ip_, v_)
-	CompilerIf #CHECK_RAM
+	CompilerIf #PROTECT_RAM
 		If (ip_) < 0 Or (ip_) >= System\RAM_Size
 			System_Error(System_LineNrByIP(System\prevIP), "write outside RAM: " + Str(ip_))
 		Else
-			*CPU\RAM(ip_) = (v_)
+			If System\symTable(ip_)\type
+				Select System\symTable(ip_)\type
+					Case #SYM_INT: *CPU\RAM(ip_) = Int(v_)
+					Case #SYM_FLOAT: *CPU\RAM(ip_) = v_
+					Case #SYM_CHAR: valA = v_ : *CPU\RAM(ip_) = valA
+					Default: *CPU\RAM(ip_) = Int(v_)
+				EndSelect
+			Else
+				*CPU\RAM(ip_) = v_
+			EndIf
 		EndIf
 	CompilerElse
-		*CPU\RAM(ip_) = (v_)
+		If System\symTable(ip_)\type;var
+			Select System\symTable(ip_)\type
+				Case #SYM_INT: *CPU\RAM(ip_) = Int(v_)
+				Case #SYM_FLOAT: *CPU\RAM(ip_) = v_
+				Case #SYM_CHAR: valA = v_ : *CPU\RAM(ip_) = valA
+				Default: *CPU\RAM(ip_) = Int(v_)
+			EndSelect
+		Else
+			*CPU\RAM(ip_) = v_
+		EndIf
 	CompilerEndIf
 EndMacro
 
 Macro GETVAL(ip_, v_)
-	CompilerIf #CHECK_RAM
+	CompilerIf #PROTECT_RAM
 		If (ip_) < 0 Or (ip_) >= System\RAM_Size
-			System_Error(System_LineNrByIP(System\prevIP), "read outside RAM: " + Str(System\prevIP))
+			System_Error(System_LineNrByIP(System\prevIP), "read outside RAM: " + Str(ip_))
 		Else
 			v_ = *CPU\RAM(ip_)
 		EndIf
@@ -474,11 +619,19 @@ Macro GETVAL_WRITE(ip_, w_)
 	VarAddressMode = System\adrMode & $F
 	GETINDEX()
 	If VarAddressMode & #ADR_POINTER
- 		GETVAL(ip_, VarAddress)
+		GETVAL(ip_, VarAddress)
 		GETVAL(VarAddress, w_)
 		w_ + VarIndex
 	Else
 		GETVAL(ip_, w_)
+; 		If VarIndex
+; 			GETVAL(ip_ - 1, arrSize)
+; 			If (VarIndex < 0 Or VarIndex > arrSize)
+; 				Debug arrsize
+; 				System_Error(System_LineNrByIP(ip_), "Array index: " + Str(VarIndex) + " out of bounds: " + Str(arrSize))
+; 			EndIf
+; 		EndIf
+		w_ + VarIndex
 	EndIf
 	System\nextIP + 1
 EndMacro
@@ -487,49 +640,75 @@ Macro GETVAL_READ(ip_, r_)
 	VarAddressMode = System\adrMode & $F
 	GETINDEX()
 	If VarAddressMode & #ADR_INDIRECT
-		GETVAL(ip_, VarAddress)
-		If VarAddressMode & #ADR_POINTER
-			GETVAL(VarAddress, VarAddress)
-		EndIf
-		VarAddress + VarIndex
-		GETVAL(VarAddress, r_)
+ 		GETVAL(ip_, VarAddress)
+ 		
+;  		If VarIndex
+;  			GETVAL(VarAddress -1, arrSize)
+;  			If VarIndex < 0 Or VarIndex > arrSize
+;  				System_Error(System_LineNrByIP(ip_), "Array index: " + Str(VarIndex) + " out of bounds: " + Str(arrSize))
+;  			EndIf
+;  		EndIf
+
+ 		If VarAddressMode & #ADR_POINTER
+ 			GETVAL(VarAddress, VarAddress)
+;  		ElseIf VarIndex
+;  			GETVAL(VarAddress -1, arrSize)
+;  			If VarIndex < 0 Or VarIndex > arrSize
+;  				System_Error(System_LineNrByIP(ip_), "Array index: " + Str(VarIndex) + " out of bounds: " + Str(arrSize))
+;  			EndIf
+ 		EndIf
+ 		VarAddress + VarIndex
+ 		GETVAL(VarAddress, r_)
 	Else
 		GETVAL(ip_, r_)
 	EndIf
 	System\nextIP + 1
 EndMacro
 
+Procedure DebugStack()
+	Protected i
+	For i = System\ADR_StackStart To *CPU\SP - 1
+ 		Debug MEMSTR(i - System\ADR_StackStart) + "  " + *CPU\RAM(i)
+	Next
+	Debug "--------"
+EndProcedure
+
 Macro PUSH(v_)
-	If *CPU\SP >= System\STACK_Size
+	If *CPU\SP >= System\ADR_StackEnd
 		System_Error(System_LineNrByIP(*CPU\IP), "stack overflow error")
 	Else
-		*CPU\STACK(*CPU\SP) = v_
+		*CPU\RAM(*CPU\SP) = v_
 		*CPU\SP + 1
 	EndIf
+; 	DebugStack()
 EndMacro
 
 Macro POP(v_)
-	*CPU\SP - 1
-	If *CPU\SP < 0
+ 	*CPU\SP - 1
+	If *CPU\SP < System\ADR_StackStart
 		System_Error(System_LineNrByIP(*CPU\IP), "stack underflow error")
 	Else
-		v_ = *CPU\STACK(*CPU\SP)
+		v_ = *CPU\RAM(*CPU\SP)
 	EndIf
+;    	DebugStack()
 EndMacro
 
-Macro MATH(op_,)
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	r1 op_ r2
-	SETVAL(*CPU\V, r1)
+Macro MATH_I(op_)
+	GETVAL(*CPU\V, valI1)
+	GETVAL_READ(System\nextIP, valI2)
+	valI1 op_ valI2
+	SETVAL(*CPU\V, valI1)
+EndMacro
+
+Macro MATH_F(op_)
+	GETVAL_READ(System\nextIP, valF1)
+	*CPU\RAM(*CPU\V) op_ valF1
 EndMacro
 
 Macro COMPARE(op_, flagTrue_, flagFalse_)
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	If r1 op_ r2
+	GETVAL(*CPU\v, valF1)
+	GETVAL_READ(System\nextIP, valF2)
+	If valF1 op_ valF2
 		System\nextIP + 1
 		*CPU\FLAGS = flagTrue_
 	Else
@@ -542,28 +721,27 @@ Macro TokenText(token_)
 	Mid(Parser\code, token_\position, token_\length)
 EndMacro
 
+Procedure.s GetTokenName(ID)
+	If ID >= 0  And ID < 255
+		ProcedureReturn TokenName(ID)
+	EndIf
+	ProcedureReturn ""
+EndProcedure
+
 ;-
 
 Procedure.s FSTR(v.d, asFloat = 0)
-	Protected s.s
-	
 	If v = Int(v)
 		If asFloat
 			ProcedureReturn Str(v) + ".0"
 		EndIf
 		ProcedureReturn Str(v)
 	EndIf
-	s = RTrim(StrF(v, #NbDecimals), "0")
-	If Right(s, 1) = "."
-		ProcedureReturn s + "0"
+	valS = RTrim(StrF(v, #NbDecimals), "0")
+	If Right(valS, 1) = "."
+		ProcedureReturn valS + "0"
 	EndIf
-	ProcedureReturn s
-EndProcedure
-
-Procedure GETVAR(ip)
-	Static adr
-	GETVAL(ip, adr)
-	ProcedureReturn System_VarByIP(ip)
+	ProcedureReturn valS
 EndProcedure
 
 Procedure MIN(v1, v2)
@@ -589,10 +767,73 @@ Procedure CLAMP(v, min, max)
 	ProcedureReturn v
 EndProcedure
 
+Procedure Keyword_Add(type, name.s)
+	KeyWord(UCase(name))\type = type
+	KeyWord(UCase(name))\name = name
+EndProcedure
+
+Procedure Constant_Add(type, name.s, value.d)
+	Protected key.s = UCase(name)
+	
+	If FindMapElement(Constant(), key)
+		System_Error(Parser\curLine, "Constant already defined: " + name)
+	ElseIf AddMapElement(Constant(), key)
+		Constant()\type = type
+		Constant()\value = value
+		Constant()\name = name
+	Else
+		System_Error(Parser\curLine, "couldn't create Constant")
+	EndIf
+EndProcedure
+
 ;-
 
 Procedure IDE_Init()
  	Protected *file.FILE
+ 	
+	Protected opcode, nParams, size, mnemonic.s, name.s
+	Protected text.s, param.s, paramNr
+	
+	Restore Opcodes:
+	Repeat
+		Read opcode
+		Read nParams
+		Read size
+		
+		If size
+			Read.s text
+			
+			mnemonic = Trim(StringField(text, 1, ","))
+			name = Trim(StringField(text, 2, ","))
+			
+			With Opcode(opcode)
+				\mnemonic = mnemonic
+				\name = name
+				\ID = opcode
+				\nParams = nParams
+				\size = size
+			EndWith
+
+			
+			*Opcode(UCase(name)) = @Opcode(opcode)
+		EndIf
+	Until size = 0
+	
+	For opcode = 0 To 255
+		If Opcode(opcode)\name = ""
+			CopyStructure(@Opcode(#OP_KIL), @Opcode(opcode), Opcode)
+		EndIf
+	Next
+	
+	Keyword_Add(#T_DEFINE, "Define")
+	Keyword_Add(#T_MACRO, "Macro")
+	Keyword_Add(#T_INT, "Int")
+	Keyword_Add(#T_FLOAT, "Float")
+	Keyword_Add(#T_CHAR, "Char")
+	Keyword_Add(#T_ELSE, "Else")
+	Keyword_Add(#T_RETURN, "Return")
+	Keyword_Add(#T_BREAK, "Break")
+	Keyword_Add(#T_SOUND, "Sound")
  	
  	Protected NewMap img()
  	img("new") = LoadImage(#PB_Any, "_ico\file_new.png")
@@ -607,17 +848,17 @@ Procedure IDE_Init()
  	img("step") = LoadImage(#PB_Any, "_ico\step.png")
  	img("stepout") = LoadImage(#PB_Any, "_ico\stepout.png")
  	img("monitor") = LoadImage(#PB_Any, "_ico\monitor.png")
- 	img("exportc") = LoadImage(#PB_Any, "_ico\exportC.png")
  	img("help") = LoadImage(#PB_Any, "_ico\help.png")
+ 	img("copyMonitor") = LoadImage(#PB_Any, "_ico\copy.png")
  	
 	OpenWindow(#w_Main, 0, 0, 800, 600, #AppTitle$ + " - Control", #PB_Window_SystemMenu | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget | #PB_Window_SizeGadget | #PB_Window_Invisible | #PB_Window_ScreenCentered)
+	
 	CreateImageMenu(0, WindowID(#w_Main))
 	MenuTitle("File")
 	MenuItem(#m_New, "New", ImageID(img("new")))
 	MenuItem(#m_Open, "Open...", ImageID(img("open")))
 	MenuItem(#m_Save, "Save", ImageID(img("save")))
 	MenuItem(#m_SaveAs, "Save As...")
-	MenuItem(#m_ExportC, "Export C...", ImageID(img("exportc")))
 	MenuItem(#m_Close, "Close", ImageID(img("close")))
 	MenuBar()
 	MenuItem(#m_Quit, "Quit")
@@ -645,8 +886,6 @@ Procedure IDE_Init()
 	ToolBarSeparator()
 	ToolBarImageButton(#m_Monitor, ImageID(img("monitor"))) : ToolBarToolTip(#t_Main, #m_Monitor, "Monitor")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_ExportC, ImageID(img("exportc"))) : ToolBarToolTip(#t_Main, #m_ExportC, "Export C")
-	ToolBarSeparator()
 	ToolBarImageButton(#m_Help, ImageID(img("help"))) : ToolBarToolTip(#t_Main, #m_Help, "Help")
 	
 	CreateStatusBar(0, WindowID(#w_Main))
@@ -667,8 +906,7 @@ Procedure IDE_Init()
 	CloseGadgetList()
 	
 	*file = File_Add("", #True)
-	ListIconGadget(#g_Error, 0, 0, 800, 300, "Time", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect)
-	AddGadgetColumn(#g_Error, 1, "Description", 700)
+	ListViewGadget(#g_Error, 0, 0, 800, 300)
 	SplitterGadget(#g_SplitterEditorH, 0, 0, 800, 600, #g_FilePanel, #g_Error)
 	SetGadgetState(#g_SplitterEditorH, 520)
 	
@@ -712,20 +950,38 @@ Procedure IDE_Init()
 	ToolBarImageButton(#m_Run, ImageID(img("run")))
 	ToolBarImageButton(#m_Step, ImageID(img("step")))	
 	ToolBarImageButton(#m_StepOut, ImageID(img("stepout")))
-	ToolBarSeparator()
-	ToolBarImageButton(#m_ExportC, ImageID(img("exportc")))	
+	ToolBarImageButton(#m_CopyMonitor, ImageID(img("copyMonitor")))	
 	
-	ListIconGadget(#g_Monitor, 0, 0, 0, 0, "Address", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines)
-	AddGadgetColumn(#g_Monitor, 1, "Memory", 100)
-	AddGadgetColumn(#g_Monitor, 2, "Code", 1000)
-	ListIconGadget(#g_Variables, 0, 0, 0, 0, "Name", 100, #PB_ListIcon_FullRowSelect | #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_GridLines)
-	AddGadgetColumn(#g_Variables, 1, "Address", 100)
-	AddGadgetColumn(#g_Variables, 2, "Value", 500)
-	SplitterGadget(#g_SplitterMonitor, 0, 0,800, 600, #g_Monitor, #g_Variables, #PB_Splitter_Vertical)
-	SetGadgetState(#g_SplitterMonitor, 500)
+	ListIconGadget(#g_Monitor, 0, 0, 0, 0, "Address", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
+	AddGadgetColumn(#g_Monitor, 1, "m1", 50)
+	AddGadgetColumn(#g_Monitor, 2, "m2", 50)
+	AddGadgetColumn(#g_Monitor, 3, "m3", 50)
+	AddGadgetColumn(#g_Monitor, 4, "Code", 1000)
+	ContainerGadget(#g_VarContainer, 0, 0, 0, 0)
+	ComboBoxGadget(#g_VarSort, 0, 0, 0, 0)
+	
+	AddGadgetItem(#g_VarSort, 0, "Subroutine")
+	AddGadgetItem(#g_VarSort, 1, "Name")
+	AddGadgetItem(#g_VarSort, 2, "Type")
+	AddGadgetItem(#g_VarSort, 3, "Address")
+	AddGadgetItem(#g_VarSort, 4, "Value")
+	SetGadgetState(#g_VarSort, 0)
+	
+	ListIconGadget(#g_Variables, 0, 0, 0, 0, "Subroutine", 80, #PB_ListIcon_FullRowSelect | #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_GridLines)
+	CloseGadgetList()
+	AddGadgetColumn(#g_Variables, 1, "Name", 80)
+	AddGadgetColumn(#g_Variables, 2, "Type", 50)
+	AddGadgetColumn(#g_Variables, 3, "Address", 100)
+	AddGadgetColumn(#g_Variables, 4, "Value", 500)
+	
+	SplitterGadget(#g_SplitterMonitor, 0, 0,800, 600, #g_Monitor, #g_VarContainer, #PB_Splitter_Vertical)
+	SetGadgetState(#g_SplitterMonitor, 400)
+	
 	StickyWindow(#w_Monitor, 1)
 	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_F5, #m_ParseRun)
 	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_F6, #m_Parse)
+	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_Up, #m_MonitorUp)
+	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_Down, #m_MonitorDown)
 	
 	SetGadgetFont(#g_Error, FontID(Font))
 	SetGadgetFont(#g_Variables, FontID(Font))
@@ -735,53 +991,25 @@ Procedure IDE_Init()
 	SetGadgetColor(#g_Sub, #PB_Gadget_BackColor, 0)
 	SetGadgetColor(#g_Sub, #PB_Gadget_FrontColor, RGB(255,255,255))
 	
-	While CountGadgetItems(#g_Monitor) < 1250
+	While CountGadgetItems(#g_Monitor) < 80
 		AddGadgetItem(#g_Monitor, -1, "")
 	Wend
 	
 	SetWindowState(#w_Main, #PB_Window_Maximize)
 	WindowBounds(#w_Screen, #PB_Ignore, #PB_Ignore, #PB_Ignore, WindowHeight(#w_Main) - ToolBarHeight(#t_Main) - StatusBarHeight(0) - MenuHeight())	
 	
+	OpenWindow(#w_Debug, 0, 0, 600, 400, #AppTitle$ + " - Debug output", #PB_Window_Tool | #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
+	EditorGadget(#g_Debug, 0, 0, 600, 400, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
+	StickyWindow(#w_Debug, 1)
+	SetGadgetFont(#g_Debug, FontID(Font))
+	
 	SetActiveWindow(#w_Main)
-		
-	Protected opcode, procAdr, nParams, size, name.s
-	Protected text.s, param.s, paramNr
-	
-	Restore Opcodes:
-	Repeat
-		Read opcode
-		Read procAdr
-		Read nParams
-		Read size
-		
-		If procAdr
-			Read.s text
-			
-			name = StringField(text, 1, " ")
-			
-			With Opcode(opcode)
-				\name = name
-				\ID = opcode
-				\nParams = nParams
-				\size = size
-				\procAddress = procAdr
-			EndWith
-			
-			*Opcode(name) = @Opcode(opcode)
-		EndIf
-	Until procAdr = 0
-	
-	For opcode = 0 To 255
-		If Opcode(opcode)\name = ""
-			CopyStructure(@Opcode(#_KIL), @Opcode(opcode), Opcode)
-		EndIf
-	Next
-	
-	KeyWord("ELSE") = #T_ELSE
-	KeyWord("BRK") = #T_BREAK
-	KeyWord("SNL") = #T_SOUND
 	
 	File_Activate(*file)
+	
+	ForEach img()
+		FreeImage(img())
+	Next
 EndProcedure
 
 ;-
@@ -844,8 +1072,8 @@ Procedure File_Activate(*file.File, carretPos = -1, parse = #False)
 			EndIf
 		Next
 		
-		If parse
-			System_Parse(*file)
+		If parse And *file\isNew = #False
+			System_Parse(*file, #False)
 		EndIf
 		SetWindowTitle(#w_Main, #AppTitle$ + " - " + *file\path)
 		
@@ -855,7 +1083,7 @@ Procedure File_Activate(*file.File, carretPos = -1, parse = #False)
 	ProcedureReturn *CurrentFile
 EndProcedure
 
-Procedure File_Open(path.s, newFile = #False)
+Procedure File_Open(path.s, newFile = #False, activate = #False)
 	Protected carret, option.s, optionName.s, optionVal.s
 	Protected file, *file.FILE, *tempFile.FILE
 	
@@ -868,9 +1096,14 @@ Procedure File_Open(path.s, newFile = #False)
 		EndIf
 		
 		*file = File_Find(path)
-		If *file
+		If *file And activate
 			ProcedureReturn File_Activate(*file)
 		EndIf
+	EndIf
+	
+	If newFile = 0 And FileSize(path) < 0
+		MessageRequester(#AppTitle$, "File not found: " + path, #PB_MessageRequester_Error)
+		ProcedureReturn #Null
 	EndIf
 	
 	*file = File_Add(path, newFile)
@@ -898,17 +1131,20 @@ Procedure File_Open(path.s, newFile = #False)
 				Wend
 			EndIf
 			CloseFile(file)
-			
 			*tempFile = File_Find()
-			If *tempFile And *tempFile\isNew
+
+			If *tempFile; And *tempFile\isNew
 				File_Close(*tempFile)
 			EndIf
 			
 			Scintilla_ClearUndo(*file\editor)
 			Scintilla_SetSavePoint(*file\editor)
 		EndIf
-
-		File_Activate(*file, carret)
+		
+		If activate
+			File_Activate(*file, carret)
+			System_Parse(*file)
+		EndIf
 	EndIf
 	
 	ProcedureReturn *file
@@ -976,21 +1212,27 @@ Procedure File_Save(*file.FILE, saveAs = #False)
 		*file\isNew = #False
 	EndIf
 	
+	If *tempFile
+		File_Close(*tempFile, #False, #False)
+	EndIf
+	
 	File_Activate(*file)
-	File_UpdateIni()
 	
 	ProcedureReturn #True
 EndProcedure
 
-Procedure File_Close(*file.FILE)
+Procedure File_Close(*file.FILE, quit = #False, saveChanges = #True)
 	Protected index
+
+	If *file
+		File_Activate(*file)
+	EndIf
 	
 	If *file = #Null
 		ProcedureReturn 0
 	EndIf
 	
-	File_Activate(*file)
-	If Scintilla_IsDirty(*file\editor)
+	If saveChanges And Scintilla_IsDirty(*file\editor)		
 		Select MessageRequester(#AppTitle$, "The file is not saved. Save it now?", #PB_MessageRequester_Warning | #PB_MessageRequester_YesNoCancel)
 			Case #PB_MessageRequester_Cancel
 				ProcedureReturn #PB_MessageRequester_Cancel
@@ -1018,12 +1260,17 @@ Procedure File_Close(*file.FILE)
 			*file = DeleteElement(File(), 1)
 		EndIf
 	Next
-	If *file = #Null
+	
+	If *CurrentFile = #Null
+		*CurrentFile = File_Activate(GetGadgetItemData(#g_FilePanel, GetGadgetState(#g_FilePanel)))
+	EndIf
+	
+	If *file = #Null And quit = #False
 		*file = File_Add("", #True)
-	EndIf 
-	File_Activate(*file)
-
-	Scintilla_ClearUndo(*file\editor)
+		File_Activate(*file)
+		
+		Scintilla_ClearUndo(*file\editor)
+	EndIf
 	
 	ProcedureReturn *file
 EndProcedure
@@ -1038,41 +1285,40 @@ Procedure File_UpdateIni()
 				WritePreferenceString("FILE" + ListIndex(File()), File()\path)
 			EndIf
 		Next
-		ClosePreferences()
+		ClosePreferences() 
 	EndIf
 EndProcedure
 ;-
 
 Macro SYSTEM_INITRAM(pos_, before_ = 0, after_ = 1)
-	adr - (before_)
-	System\pos_ = adr
-	adr - (after_)
+	*CPU\IP - (before_)
+	System\pos_ = *CPU\IP
+	*CPU\IP - (after_)
 EndMacro
 
-Procedure System_AddConstant(type, key.s, value)
-	If AddMapElement(Parser\constant(), key)
-		Parser\constant()\type = type
-		Parser\constant()\value = value
-	EndIf
-EndProcedure
+Macro SYSTEM_HASERROR()
+	Bool(System\state & #STATE_ERROR <> 0)
+EndMacro
+
+Macro SYSTEM_NOERROR()
+	Bool(System\state & #STATE_ERROR = 0)
+EndMacro
 
 Procedure System_Init(ramSize, stackSize)
-	Protected adr, i
+	Protected i
 	
 	System_CloseScreen(#True)
 
 	ForEach system\sound()
 		If IsSound(System\sound())
-			Debug "free sound: " + Str(System\sound())
 			FreeSound(System\sound())
 		EndIf
 	Next
 	
-	ClearStructure(Parser, PARSER)
-	InitializeStructure(Parser, PARSER)
-	
+	ClearMap(Constant())
 	ClearStructure(System, SYSTEM)
 	InitializeStructure(System, SYSTEM)
+	
 	If *CurrentFile And IsGadget(*CurrentFile\editor)
 		Scintilla_ClearError(*CurrentFile\editor)
 	EndIf
@@ -1081,19 +1327,22 @@ Procedure System_Init(ramSize, stackSize)
 		SetGadgetItemText(#g_Monitor, i, "" + #LF$ + "" + #LF$ + "")
 	Next
 	ClearGadgetItems(#g_Sub)
-	ClearGadgetItems(#g_Error)
+	ClearGadgetItems(#g_Debug)
 	ClearGadgetItems(#g_Variables)
 	
-	Dim System\symTable(ramSize)
-	Dim System\CPU\RAM(ramSize)
-	Dim System\CPU\STACK(stackSize)
-	System\RAM_Size = ramSize
+	Parser\main\name  = ".main."
+	AddMapElement(Parser\sub(), UCase(Parser\main\name))
+	
+	System\RAM_Size = ramSize + stackSize
 	System\STACK_Size = stackSize
-	
 	*CPU = System\CPU
+
+	Dim System\symTable(System\RAM_Size)
+	Dim System\CPU\RAM(System\RAM_Size)
 	
-	adr = ramSize
-	SYSTEM_INITRAM(ADR_Color, 255, 0)
+	*CPU\IP = RamSize
+	SYSTEM_INITRAM(ADR_Palette)
+	SYSTEM_INITRAM(ADR_Color, 255)
 	SYSTEM_INITRAM(ADR_COL_Front)
 	SYSTEM_INITRAM(ADR_COL_Back)
 	SYSTEM_INITRAM(ADR_CHR_X)
@@ -1104,12 +1353,14 @@ Procedure System_Init(ramSize, stackSize)
 	SYSTEM_INITRAM(ADR_Time)
 	SYSTEM_INITRAM(ADR_CollisionID)
 	SYSTEM_INITRAM(ADR_Collision)
-	SYSTEM_INITRAM(ADR_VarPointer)
-	SYSTEM_INITRAM(ADR_Var, 0, 0)
+	SYSTEM_INITRAM(ADR_StackEnd)
+	SYSTEM_INITRAM(ADR_StackStart, 255)
+	SYSTEM_INITRAM(ADR_VarStart, 1)
+	SYSTEM_INITRAM(ADR_Var, 8)
 	
+	SETVAL(System\ADR_Palette, 1)
 	SETVAL(System\ADR_CHR_W, 8)
 	SETVAL(System\ADR_CHR_H, 8)
-	SETVAL(System\ADR_VarPointer, System\ADR_Var)
 	
 	SETVAL(System\ADR_Color + 00, RGB(  0,   0,   0))
 	SETVAL(System\ADR_Color + 01, RGB(255, 255, 255))
@@ -1128,58 +1379,63 @@ Procedure System_Init(ramSize, stackSize)
 	SETVAL(System\ADR_Color + 14, RGB(255, 250, 200))
 	SETVAL(System\ADR_Color + 15, RGB(128, 128, 128))
 	
-	System_AddConstant(#SYM_ADDRESS, "FRONTCOLOR", @System\ADR_COL_Front)
-	System_AddConstant(#SYM_ADDRESS, "BACKCOLOR", @System\ADR_COL_Back)
-	System_AddConstant(#SYM_ADDRESS, "CHAR_W", @System\ADR_CHR_W)
-	System_AddConstant(#SYM_ADDRESS, "CHAR_H", @System\ADR_CHR_H)
-	System_AddConstant(#SYM_ADDRESS, "CHAR_MODE", @System\ADR_CHR_MODE)
-	System_AddConstant(#SYM_ADDRESS, "TIME", @System\ADR_Time)
-	System_AddConstant(#SYM_ADDRESS, "VARIABLE", @System\ADR_VarPointer)
-	System_AddConstant(#SYM_VARIABLE, "RAM", System\RAM_Size)
-	System_AddConstant(#SYM_VARIABLE, "STACK", System\STACK_Size)
-	System_AddConstant(#SYM_CONSTANT, "VRAM", System\VRAM_Size)
-	System_AddConstant(#SYM_CONSTANT, "SCREEN_ACTIVE", System\SCR_Active)
-	System_AddConstant(#SYM_CONSTANT, "SCREEN_W", System\SCR_Width)
-	System_AddConstant(#SYM_CONSTANT, "SCREEN_H", System\SCR_Height)
-	System_AddConstant(#SYM_CONSTANT, "COLOR", System\ADR_Color)
-	System_AddConstant(#SYM_CONSTANT, "COLLISIONID", System\ADR_CollisionID)
-	System_AddConstant(#SYM_CONSTANT, "COLLISION", System\ADR_Collision)
-	System_AddConstant(#SYM_CONSTANT, "KEY_ESCAPE", #PB_Key_Escape)
-	System_AddConstant(#SYM_CONSTANT, "KEY_LEFT", #PB_Key_Left)
-	System_AddConstant(#SYM_CONSTANT, "KEY_RIGHT", #PB_Key_Right)
-	System_AddConstant(#SYM_CONSTANT, "KEY_UP", #PB_Key_Up)
-	System_AddConstant(#SYM_CONSTANT, "KEY_DOWN", #PB_Key_Down)
-	System_AddConstant(#SYM_CONSTANT, "KEY_A", #PB_Key_Left)
-	System_AddConstant(#SYM_CONSTANT, "KEY_S", #PB_Key_Right)
-	System_AddConstant(#SYM_CONSTANT, "KEY_W", #PB_Key_Up)
-	System_AddConstant(#SYM_CONSTANT, "KEY_Y", #PB_Key_Down)
-	System_AddConstant(#SYM_CONSTANT, "KEY_Z", #PB_Key_Down)
-	System_AddConstant(#SYM_CONSTANT, "KEY_SPACE", #PB_Key_Space)
-	System_AddConstant(#SYM_CONSTANT, "KEY_CONTROL", #PB_Key_LeftControl)
-	System_AddConstant(#SYM_CONSTANT, "KEY_RETURN", #PB_Key_Return)
-	System_AddConstant(#SYM_CONSTANT, "BLACK", #Black)
-	System_AddConstant(#SYM_CONSTANT, "MAGENTA", #Magenta)
-	System_AddConstant(#SYM_CONSTANT, "BLUE", #Blue)
-	System_AddConstant(#SYM_CONSTANT, "GREEN", #Green)
-	System_AddConstant(#SYM_CONSTANT, "CYAN", #Cyan)
-	System_AddConstant(#SYM_CONSTANT, "RED", #Red)
-	System_AddConstant(#SYM_CONSTANT, "ORANGE", RGB(255,128,0))
-	System_AddConstant(#SYM_CONSTANT, "YELLOW", #Yellow)
-	System_AddConstant(#SYM_CONSTANT, "GRAY", RGB(128,128,128))
-	System_AddConstant(#SYM_CONSTANT, "WHITE", #White)
-	System_AddConstant(#SYM_CONSTANT, "EQ", #FLAG_EQUAL)
-	System_AddConstant(#SYM_CONSTANT, "NE", #FLAG_NOTEQUAL)
-	System_AddConstant(#SYM_CONSTANT, "GR", #FLAG_GREATER)
-	System_AddConstant(#SYM_CONSTANT, "LO", #FLAG_LOWER)
+	Constant_Add(#SYM_ADDRESS, "#PALETTE", @System\ADR_Palette)
+	Constant_Add(#SYM_ADDRESS, "#FRONTCOLOR", @System\ADR_COL_Front)
+	Constant_Add(#SYM_ADDRESS, "#BACKCOLOR", @System\ADR_COL_Back)
+	Constant_Add(#SYM_ADDRESS, "#CHAR_W", @System\ADR_CHR_W)
+	Constant_Add(#SYM_ADDRESS, "#CHAR_H", @System\ADR_CHR_H)
+	Constant_Add(#SYM_ADDRESS, "#CHAR_MODE", @System\ADR_CHR_MODE)
+	Constant_Add(#SYM_ADDRESS, "#TIME", @System\ADR_Time)
+	Constant_Add(#SYM_VARIABLE, "#RAM", System\RAM_Size)
+	Constant_Add(#SYM_VARIABLE, "#STACK", System\STACK_Size)
+	Constant_Add(#SYM_CONSTANT, "#VRAM", System\VRAM_Size)
+	Constant_Add(#SYM_CONSTANT, "#SCREEN_ACTIVE", System\SCR_Active)
+	Constant_Add(#SYM_CONSTANT, "#SCREEN_W", System\SCR_Width)
+	Constant_Add(#SYM_CONSTANT, "#SCREEN_H", System\SCR_Height)
+	Constant_Add(#SYM_CONSTANT, "#COLOR", System\ADR_Color)
+	Constant_Add(#SYM_CONSTANT, "#COLLISIONID", System\ADR_CollisionID)
+	Constant_Add(#SYM_CONSTANT, "#COLLISION", System\ADR_Collision)
+	Constant_Add(#SYM_CONSTANT, "#KEY_ESCAPE", #PB_Key_Escape)
+	Constant_Add(#SYM_CONSTANT, "#KEY_LEFT", #PB_Key_Left)
+	Constant_Add(#SYM_CONSTANT, "#KEY_RIGHT", #PB_Key_Right)
+	Constant_Add(#SYM_CONSTANT, "#KEY_UP", #PB_Key_Up)
+	Constant_Add(#SYM_CONSTANT, "#KEY_DOWN", #PB_Key_Down)
+	Constant_Add(#SYM_CONSTANT, "#KEY_A", #PB_Key_Left)
+	Constant_Add(#SYM_CONSTANT, "#KEY_S", #PB_Key_Right)
+	Constant_Add(#SYM_CONSTANT, "#KEY_W", #PB_Key_Up)
+	Constant_Add(#SYM_CONSTANT, "#KEY_Y", #PB_Key_Down)
+	Constant_Add(#SYM_CONSTANT, "#KEY_Z", #PB_Key_Down)
+	Constant_Add(#SYM_CONSTANT, "#KEY_SPACE", #PB_Key_Space)
+	Constant_Add(#SYM_CONSTANT, "#KEY_CONTROL", #PB_Key_LeftControl)
+	Constant_Add(#SYM_CONSTANT, "#KEY_RETURN", #PB_Key_Return)
+	Constant_Add(#SYM_CONSTANT, "#BLACK", #Black)
+	Constant_Add(#SYM_CONSTANT, "#MAGENTA", #Magenta)
+	Constant_Add(#SYM_CONSTANT, "#BLUE", #Blue)
+	Constant_Add(#SYM_CONSTANT, "#GREEN", #Green)
+	Constant_Add(#SYM_CONSTANT, "#CYAN", #Cyan)
+	Constant_Add(#SYM_CONSTANT, "#RED", #Red)
+	Constant_Add(#SYM_CONSTANT, "#ORANGE", RGB(255,128,0))
+	Constant_Add(#SYM_CONSTANT, "#YELLOW", #Yellow)
+	Constant_Add(#SYM_CONSTANT, "#GRAY", RGB(128,128,128))
+	Constant_Add(#SYM_CONSTANT, "#WHITE", #White)
+	Constant_Add(#SYM_CONSTANT, "#EQ", #FLAG_EQUAL)
+	Constant_Add(#SYM_CONSTANT, "#NE", #FLAG_NOTEQUAL)
+	Constant_Add(#SYM_CONSTANT, "#GR", #FLAG_GREATER)
+	Constant_Add(#SYM_CONSTANT, "#LO", #FLAG_LOWER)
 	
+	System\CPU\IP = 0
+	System\CPU\SP = System\ADR_StackStart
 	System\startTime = ElapsedMilliseconds()
 EndProcedure
 
-Procedure System_Start(ramSize, stackSize)
+Procedure System_Start(ramSize_, stackSize_)
 	Protected *file.FILE
 	Protected path.s, currentFile.s, index
 	
-	System_Init(ramSize, stackSize)
+	RamSize = ramSize_
+	StackSize = stackSize_
+	
+	System_Init(RamSize, StackSize)
 	
 	If OpenPreferences("Settings.ini")
 		currentFile = ReadPreferenceString("CURRENTFILE", "")
@@ -1199,7 +1455,7 @@ Procedure System_Start(ramSize, stackSize)
 		*file = File_Add()		
 	EndIf
 	
-	File_Activate(*file)
+	File_Activate(*file, -1, #True)
 	
 	ProcedureReturn *file
 EndProcedure
@@ -1257,7 +1513,7 @@ Procedure System_RunState(state, updateGadget = #True)
 			EndIf
 			
 			If previousState & #STATE_RUN = 0
-				AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "program started") 
+				AddGadgetItem(#g_Error, -1, TIMESTR() + "   program started") 
 			EndIf
 		Else
 			SetToolBarButtonState(#t_Main, #m_Run, 0)
@@ -1267,7 +1523,7 @@ Procedure System_RunState(state, updateGadget = #True)
 				HideWindow(#w_Screen, 1)
 			EndIf
 			If previousState & #STATE_RUN
-				AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "program stopped")
+				AddGadgetItem(#g_Error, -1, TIMESTR() + "   program stopped")
 			EndIf
 			If SoundSystemOK
 				StopSound(#PB_All)
@@ -1278,22 +1534,22 @@ Procedure System_RunState(state, updateGadget = #True)
 			SetToolBarButtonState(#t_Main, #m_Step, 1)
 			
 			If updateGadget
-				System_Update_Variable(#False)
+				System_Update_VarList(Parser\main, #False)
 				If MonitorVisible
-					System_Update_Monitor(0)
+					System_Update_Monitor(*CPU\IP)
 				EndIf
 			EndIf
 
 			System\wait = -1
 			
 			If previousState & #STATE_STEP = 0
-				AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "program paused")
+				AddGadgetItem(#g_Error, -1, TIMESTR() + "   program paused")
 			EndIf
 		Else
 			SetToolBarButtonState(#t_Main, #m_Step, 0)
 			
 			If previousState & #STATE_STEP
-				AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "program continued")
+				AddGadgetItem(#g_Error, -1, TIMESTR() + "   program continued")
 			EndIf
 		EndIf
 		
@@ -1301,67 +1557,224 @@ Procedure System_RunState(state, updateGadget = #True)
 	EndIf
 EndProcedure
 
-Procedure System_Update_Monitor(ip)
-	Protected curIP = *CPU\IP, varIP
+Procedure System_Collect_Variables(*sub.SUB, List varList.VARLIST())
+	If *sub
+		ForEach *sub\var()
+			AddElement(varList())
+			varList()\var = *sub\var()
+			varList()\sub = *sub\name
+			varList()\name = *sub\var()\name
+			Select *sub\var()\type
+				Case #SYM_INT: varList()\type = "int"
+				Case #SYM_FLOAT: varList()\type = "float"
+				Case #SYM_CHAR: varList()\type = "char"
+				Case #SYM_ARRAY: varList()\type = "array"
+				Default: varList()\type = "?"
+			EndSelect
+			varList()\address = MEMSTR(*sub\var()\adr)
+			varList()\value = FSTR(*CPU\RAM(*sub\var()\adr))
+		Next
+		
+		ForEach *sub\sub()
+			System_Collect_Variables(*sub\sub(), varList())
+		Next
+	EndIf
+EndProcedure
+
+Procedure System_Update_SubList()
+	Protected index
+	Protected NewList subList.DATASECT()
+	
+	ForEach Parser\datasect()
+		If Parser\datasect()\isSub
+			If AddElement(subList())
+				CopyStructure(Parser\datasect(), subList(), DATASECT)
+			EndIf
+		EndIf
+	Next
+	;SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(LABEL\name), #PB_String)
+	SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(DATASECT\lineNr), TypeOf(DATASECT\lineNr))
+	
+	ClearGadgetItems(#g_Sub)
+	ForEach subList()
+		AddGadgetItem(#g_Sub, index, RemoveString(TokenText(subList()\token), ":"))
+		SetGadgetItemData(#g_Sub, index, subList()\lineNr)
+		index + 1
+	Next
+EndProcedure
+
+Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
+	Static updateTime
+	
+	Protected lineNr, value.d, valueChanged
+	Protected *var.VARIABLE, val.d
+	
+	If wait
+		If System\time < updateTime
+			ProcedureReturn
+		EndIf
+		updateTime = System\time + 500
+	EndIf
+	
+	If init
+		Protected NewList varList.VARLIST(), subName.s, startIndex
+		System_Collect_Variables(*sub, varList())
+		
+		Select GetGadgetState(#g_VarSort)
+			Case 0
+				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\sub), #PB_String)
+				If FirstElement(varList())
+					subName = varList()\sub
+					startIndex = 0
+					While NextElement(varList())
+						If subName <> varList()\sub
+							PushListPosition(varList())
+							SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\name), #PB_String, startIndex, ListIndex(varList()) - 1)
+							PopListPosition(varList())
+							subName = varList()\sub
+							startIndex = ListIndex(varList())
+						EndIf
+					Wend
+					SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\name), #PB_String, startIndex, ListSize(varList()) - 1)
+					subName = varList()\sub
+				EndIf
+			Case 1
+				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\name), #PB_String)
+			Case 2
+				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\type), #PB_String)
+			Case 3
+				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\address), #PB_String)
+			Case 4
+				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\value), #PB_String)
+		EndSelect
+		
+		ClearGadgetItems(#g_Variables)
+		
+		lineNr = 0
+		ForEach varList()
+			With varList()\var
+				\infoLineNr = lineNr
+				
+				AddGadgetItem(#g_Variables, lineNr, varList()\sub)
+				SetGadgetItemText(#g_Variables, lineNr, varList()\name, 1)
+				SetGadgetItemText(#g_Variables, lineNr, varList()\type, 2)
+				SetGadgetItemText(#g_Variables, lineNr, varList()\address, 3)
+				SetGadgetItemText(#g_Variables, lineNr, FSTR(*CPU\RAM(\adr)), 4)
+				
+				If varList()\var\isLocal
+					SetGadgetItemColor(#g_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 245, 230), 1)
+				EndIf
+				If varList()\var\isParam
+					SetGadgetItemColor(#g_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 225, 210), 1)
+				EndIf
+				
+				SetGadgetItemData(#g_Variables, lineNr, varList()\var)
+				lineNr + 1
+			EndWith
+		Next
+		
+		ProcedureReturn #True
+		
+	Else
+		ForEach *sub\var()
+			With *sub\var()
+				GETVAL(\adr, value)
+				If \prevValue <> value Or \adr = VarAddress
+					\prevValue = value
+					SetGadgetItemText(#g_Variables, \infoLineNr, FSTR(value), 4)
+					If \adr = VarAddress
+						SetGadgetState(#g_Variables, \infoLineNr)
+					EndIf
+					valueChanged = #True
+				EndIf
+			EndWith    
+		Next		
+	EndIf
+	
+	ProcedureReturn valueChanged
+EndProcedure
+
+Procedure System_Update_Monitor(ip, direction = 0)
+	Protected curIP, varIP, prevIP
 	Protected paramNr, adr, op.a, opIP, index, isData, lineNr = -1
 	Protected *opcode.OPCODE, *var.VARIABLE, *sym.SYMTABLE
-	Protected address.s, memory.s, code.s, varIndex.s
+	Protected code.s, varIndex.s
 	Protected lineCount = CountGadgetItems(#g_Monitor) - 1
 	
 	For index = 0 To lineCount
-		SetGadgetItemText(#g_Monitor, index, "" + #LF$ + "" + #LF$ + "")
+		SetGadgetItemText(#g_Monitor, index, "" + #LF$ + "" + #LF$ + "" + #LF$ + "" + #LF$ + "")
 		SetGadgetItemData(#g_Monitor, index, 0)
 		SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, #PB_Default)
 	Next
+	If System\programSize <= 0
+		ProcedureReturn
+	EndIf
+	
+	curIP = CLAMP(*CPU\IP, 0, System\programSize)
+	If 1;direction
+		While ((direction < 0 And curIP > 0) Or (curIP < System\programSize)) And System\symTable(curIP)\type <> #SYM_OPCODE
+			curIP + direction
+		Wend
+		
+		Protected skipOp = 10
+		While *CPU\IP > 0
+			If System\symTable(*CPU\IP)\type = #SYM_OPCODE
+				If skipOp = 0
+					Break
+				Else
+					skipOp - 1
+				EndIf
+			EndIf
+			*CPU\IP - 1
+		Wend
+	EndIf
 	
 	index = 0
 	Repeat
+		prevIP = *CPU\IP
 		adr = *CPU\RAM(*CPU\IP)
 		*sym = @System\symTable(*CPU\IP)
 		
-		address = MEMSTR(*CPU\IP)
-		
-		Select *sym\type
-			Case #SYM_SUB
-				SetGadgetItemText(#g_Monitor, index, TokenText(*sym\token))
-				SetGadgetItemData(#g_Monitor, index, *sym\lineNr)
-				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 235, 235), 0)
-				index + 1
-			Case #SYM_FIELD
-				SetGadgetItemText(#g_Monitor, index, TokenText(*sym\token))
-				SetGadgetItemData(#g_Monitor, index, *sym\lineNr)
-				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 0)
-				index + 1
-			Case #SYM_LABEL
-				SetGadgetItemText(#g_Monitor, index, TokenText(*sym\token))
-				SetGadgetItemData(#g_Monitor, index, *sym\lineNr)
-				index + 1
-		EndSelect
-		
-		memory = RSet(FSTR(*CPU\RAM(*CPU\IP)), 3, "0") + " "
-		
 		isData = #False
 		ForEach Parser\dataSect()
-			If Parser\dataSect()\type = #SYM_FIELD
-				If *CPU\IP >= Parser\dataSect()\startAdr And *CPU\IP < Parser\dataSect()\endAdr
-					isData = #True
-					Break
+			With Parser\dataSect()
+				If \startAdr = *CPU\IP
+					If \isLabel
+						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_Monitor, index, \lineNr)
+						index + 1
+					EndIf
+					If \isField
+						If *CPU\IP >= Parser\dataSect()\startAdr And *CPU\IP < Parser\dataSect()\endAdr
+							isData = #True
+						EndIf
+						
+						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_Monitor, index, \lineNr)
+						SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 0)
+						index + 1
+					EndIf
+					If \isSub
+						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_Monitor, index, \lineNr)
+						SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 235, 235), 0)
+						index + 1
+					EndIf
 				EndIf
-			EndIf
+			EndWith
 		Next
 		
 		op = adr & $FF
 		opIP = *CPU\IP
 		*opcode = @Opcode(op)
 		System\adrMode = (adr >> 8) & $FF
+		
 		*CPU\IP + 1
 		
-		code = *opcode\name + " "
+		code = *opcode\mnemonic + " "
 				
 		For paramNr = 0 To *opcode\nParams - 1
-			memory + RSet(FSTR(*CPU\RAM(*CPU\IP)), 3, "0") + " "
 			VarIndex = ""
-			
 			adr = *CPU\RAM(*CPU\IP)
 			If System\adrMode & #ADR_INDX_DI
 				VarIndex = Str(adr)
@@ -1380,10 +1793,17 @@ Procedure System_Update_Monitor(ip)
 			
 			*sym = @System\symTable(*CPU\IP)
 			If *sym
-				If *sym\token
+				If *sym\type = #SYM_SUBPARAM
+					*var = System_VarByIP(*CPU\IP)
+					If *var
+						code + "[SP" + " + " + Str(*var\adr) + "]"
+					Else
+						code + "[SP???]"
+					EndIf
+				ElseIf *sym\token
 					code + TokenText(*sym\token)
 				Else
-					code + Str(*CPU\RAM(*CPU\IP))
+					code + FSTR(*CPU\RAM(*CPU\IP))
 				EndIf
 			Else
 				Debug "symboltable error"
@@ -1396,136 +1816,35 @@ Procedure System_Update_Monitor(ip)
 			
 			If System\adrMode & #ADR_POINTER: code + "]" : EndIf
 			code + " "
-
+			
 			GETNEXTADRMODE()
 		Next
 		
 		Select op
-			Case #_IFL, #_IGR, #_ILO, #_IGE, #_ILE, #_IEQ, #_INE, #_TO
-				memory + RSet(FSTR(*CPU\RAM(*CPU\IP)), 3, "0") + " "
-				code + "{exit:" + Str(*CPU\RAM(*CPU\IP)) + "} "
+			Case #OP_IFL, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE, #OP_TO
+ 				SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(*CPU\IP)), 3)
 				*CPU\IP + 1
 		EndSelect
 		
-		SetGadgetItemText(#g_Monitor, index, address + Chr(10) + memory + Chr(10) + code)
+		SetGadgetItemText(#g_Monitor, index, MEMSTR(prevIP), 0)
+		For paramNr = 0 To *CPU\IP - prevIP - 1
+			SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(prevIP + paramNr)), 1 + paramNr)
+			If prevIP + paramNr = curIP
+				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 1 + paramNr)
+			EndIf
+		Next
+		SetGadgetItemText(#g_Monitor, index, code, 4)
 		SetGadgetItemData(#g_Monitor, index, System_LineNrByIP(opIP))
-		SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235, 235, 250), 0)
-		SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235, 250, 235), 1)
+		
 		If isData
-			SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 2)	
-		EndIf
-		If *CPU\IP = curIP
-			SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 2)
+			SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 4)
 		EndIf
 		
 		If lineNr = -1 : lineNr = index : EndIf
 		index + 1
 	Until *CPU\IP >= System\programSize Or index >= lineCount
 	
-	If lineNr <> -1
-		SetGadgetState(#g_Monitor, lineNr)
-	EndIf
-	
 	*CPU\IP = curIP
-EndProcedure
-
-Procedure System_Update_Variable(wait = #True, init = #False)
-	Static updateTime
-	Protected lineNr, value.d, valueChanged
-	Protected *var.VARIABLE, val.d
-	
-	If wait
-		If System\time < updateTime
-			ProcedureReturn
-		EndIf
-		updateTime = System\time + 500
-	EndIf
-	
-	If init
-		NewList var.VARIABLE()
-		ForEach Parser\var()
-			AddElement(var())
-			var()\adr = Parser\var()
-			var()\name = Parser\var()\name
-		Next
-		SortStructuredList(var(), #PB_Sort_Ascending, OffsetOf(VARIABLE\name), #PB_String)
-		
-		ClearGadgetItems(#g_Variables)
-		
-		AddGadgetItem(#g_Variables, 0, "Current Variable")
-		SetGadgetItemColor(#g_Variables, 0, #PB_Gadget_BackColor, RGB(235, 250, 235))
-		*var = System_VarByIP(VarAddress)
-		If *var
-			SetGadgetItemText(#g_Variables, 0, *var\name + ":" + Str(VarIndex), 1)
-			SetGadgetItemText(#g_Variables, 0, FSTR(*CPU\RAM(VarAddress)), 2)
-		EndIf
-		lineNr = 1
-		
-		ForEach var()
-			*var = var()\adr
-			With *var
-				\infoLineNr = lineNr
-				
-				AddGadgetItem(#g_Variables, lineNr, \name)
-				
-				SetGadgetItemText(#g_Variables, lineNr, MEMSTR(\adr), 1)
-				SetGadgetItemText(#g_Variables, lineNr, FSTR(*CPU\RAM(\adr)), 2)
-				SetGadgetItemData(#g_Variables, lineNr, *var)
-				
-				lineNr + 1
-			EndWith
-		Next
-		
-		ProcedureReturn #True
-		
-	Else
-		
-		*var = System_VarByIP(VarAddress)
-		If *var
-			GETVAL(VarAddress, val)
-			; 			If System\adrMode & $F & (#ADR_INDX_DI |#ADR_INDX_IN)
-			SetGadgetItemText(#g_Variables, 0, *var\name + ":" + Str(VarIndex), 1)
-			; 			Else
-			; 				SetGadgetItemText(#g_Variables, 0, Parser\varByIP()\name, 1)
-			; 			EndIf
-			SetGadgetItemText(#g_Variables, 0, FSTR(val), 2)
-		EndIf
-		
-		ForEach Parser\var()
-			With Parser\var()
-				value = *CPU\RAM(\adr)
-				If \prevValue <> value Or \infoLineNr = 0
-					\prevValue = value
-					SetGadgetItemText(#g_Variables, \infoLineNr, FSTR(value), 2)
-					valueChanged = #True
-				EndIf
-			EndWith    
-		Next
-		
-	EndIf
-	
-	ProcedureReturn valueChanged
-EndProcedure
-
-Procedure System_Update_Label()
-	Protected index
-	Protected NewList subList.DATASECT()
-	ForEach Parser\datasect()
-		If Parser\datasect()\type = #SYM_SUB
-			If AddElement(subList())
-				CopyStructure(Parser\datasect(), subList(), DATASECT)
-			EndIf
-		EndIf
-	Next
-	;SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(LABEL\name), #PB_String)
-	SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(DATASECT\lineNr), TypeOf(DATASECT\lineNr))
-	
-	ClearGadgetItems(#g_Sub)
-	ForEach subList()
-		AddGadgetItem(#g_Sub, index, RemoveString(TokenText(subList()\token), ":"))
-		SetGadgetItemData(#g_Sub, index, subList()\lineNr)
-		index + 1
-	Next
 EndProcedure
 
 Procedure System_GotoLine(lineNr)
@@ -1536,24 +1855,26 @@ EndProcedure
 	
 Procedure System_Variable_Change(*var.VARIABLE)
 	If *var
-		Protected value.s
-		value.s = InputRequester(#AppTitle$, "Variable: " + *var\name, FSTR(*CPU\RAM(*var\adr)))
+		Protected value.s, curVal.f
+		GETVAL(*var\adr, curVal)
+		value.s = InputRequester(#AppTitle$, "Variable: " + *var\name, FSTR(curVal))
 		If value <> "" And Parse_IsNumber(value)
-			*CPU\RAM(*var\adr) = ValD(value)
+			curVal = ValD(value)
+			SETVAL(*var\adr, curVal)
 			
-			System_Update_Variable(#False)
-			System_Update_Monitor(0)
+			System_Update_VarList(Parser\main, #False)
+			System_Update_Monitor(*CPU\IP)
 		EndIf
 	EndIf
 EndProcedure
 
-Procedure System_Parse(*file.FILE, run = #False)
+Procedure System_Parse(*file.FILE, parseFull = #True, run = #False)
 	Protected result = #False
 	If *file
 		ClearStructure(Parser, PARSER)
 		InitializeStructure(Parser, PARSER)
 		
-		result = Parse_Start(Scintilla_GetText(*file\editor))
+		result = Parse_Start(*file, parseFull)
 		
 		If run
 			System_RunState(RunState | #STATE_RUN)
@@ -1566,11 +1887,11 @@ Procedure System_Error(line, message.s, warning = 0)
 	Protected index = CountGadgetItems(#g_Error)
 	Protected errLine = line
 	
-	If (System\state & #STATE_ERROR = 0)
+	If SYSTEM_NOERROR()
 		If line >= 0
 			errLine = Max(line - 1 , 0)
 			Protected text.s = "Line " + Str(line + 1) + ": " + message
-			AddGadgetItem(#g_Error, index, TIMESTR() + Chr(10) + text) 
+			AddGadgetItem(#g_Error, index, TIMESTR() + "   " + text) 
 			If *CurrentFile
 				If warning = 0
 					Scintilla_SetErrorLine(*CurrentFile\editor, errLine, text)
@@ -1580,7 +1901,7 @@ Procedure System_Error(line, message.s, warning = 0)
 				SetActiveGadget(*CurrentFile\editor)
 			EndIf
 		Else
-			AddGadgetItem(#g_Error, index, TIMESTR() + Chr(10) + message) 
+			AddGadgetItem(#g_Error, index, TIMESTR() + "   " + message) 
 		EndIf
 	EndIf
 	
@@ -1608,413 +1929,6 @@ Procedure System_SearchFlags()
 	EndIf
 EndProcedure
 
-Procedure System_ToC(path.s)
-	Protected curIP = *CPU\IP
-	Protected tabPos, tab.s, tabSize = 4
-	Protected paramNr, r.d, i, w, mem, op.a, index, isData
-	Protected *opcode.OPCODE, *var.VARIABLE, *token.TOKEN
-	Protected datIP, datUni, datVal.f, curVar.s, stepVar.s, stepCount.s
-	Protected file, header.s
-	
-	Structure CPARAM
-		*sym.SYMTABLE
-		prefix.s
-		name.s
-		type.s
-		index.s
-		indexType.i
-	EndStructure
-	
-	Dim param.CPARAM(2)
-	Protected *param.CPARAM
-	
-	NewMap loopJmp()
-	NewList ifJmp()
-	NewList sect.DATASECT()
-		
-	If path = ""
-		ProcedureReturn #False
-	ElseIf System_Parse(*CurrentFile) = #False
-		MessageRequester(#AppTitle$, "Parser Error", #PB_MessageRequester_Error)
-		ProcedureReturn #False
-	ElseIf GetFilePart(path) = ""
-		ProcedureReturn #False
-	ElseIf UCase(GetExtensionPart(path)) <> "C"
-		path = GetFilePart(path, #PB_FileSystem_NoExtension) + ".c"
-	EndIf
-	
-	header = "/*" + #NL$
-	header + "sho.co c-export of file '" + *CurrentFile\path + "'" + #NL$
-	header + "date: " + FormatDate("%mm/%dd/%yyyy - %hh:%ii:%ss", Date()) + #NL$
-	header + "*/" + #NL$
-	
-	file = ReadFile(#PB_Any, "_compiler\Header.c")
-	If IsFile(file)
-		header + ReadString(file, #PB_File_IgnoreEOL)
-		CloseFile(File)
-	EndIf
-	file = CreateFile(#PB_Any, path)
-	If IsFile(file) = 0
-		MessageRequester(#AppTitle$, "Couldn't create file", #PB_MessageRequester_Error)
-		ProcedureReturn #False
-	EndIf
-	
-	WriteStringN(file, header)
-	WriteStringN(file, "")
-	
-	If ListSize(Parser\dataSect()) > 0
-		WriteStringN(file, "// GLOBAL ARRAYS:")
-		
-		ForEach Parser\dataSect()
-			With Parser\dataSect()
-				If \type = #SYM_FIELD
-					datUni = #True
-					datVal = *CPU\RAM(\startAdr)
-					
-					For datIP = \startAdr + 1 To \endAdr - 1
-						If *CPU\RAM(datIP) <> datVal
-							datUni = #False
-							Break
-						EndIf
-					Next
-					
-					curVar = TokenText(\token)
-					If FindString("$:@!~#", Left(curVar, 1))
-						curVar = Mid(curVar, 2)
-					EndIf
-					
-					If datUni
-						WriteStringN(file, "float a_" + curVar + "[" + Str(\endAdr - \startAdr) + "] = {" + FSTR(datVal, 1) + "};")
-					Else
-						WriteString(file, "float a_" + curVar + "[" + Str(\endAdr - \startAdr) + "] = {")
-						For datIP = \startAdr To \endAdr - 1
-							WriteString(file, StrF(*CPU\RAM(datIP)))
-							If datIP < \endAdr - 1 : WriteString(file, ",") : EndIf
-						Next
-						WriteStringN(file, "};")
-					EndIf
-				EndIf
-			EndWith
-		Next
-		WriteStringN(file, "")
-	EndIf	
-	
-	If MapSize(Parser\var()) > 0
-		WriteStringN(file, "// GLOBAL VARIABLES:")
-		ForEach Parser\var()
-			WriteStringN(file, "float v_" + Parser\var()\name + " = 0;")
-		Next
-		WriteStringN(file, "")
-	EndIf
-	
-	; 1.) first get subs...
-	ForEach Parser\dataSect()
-		If Parser\dataSect()\type = #SYM_SUB And AddElement(sect())
-			CopyStructure(Parser\dataSect(), sect(), DATASECT)
-		EndIf
-	Next
-	; 2.) get main body
-	If AddElement(sect())
-		sect()\type = 0
-		sect()\startAdr = 0
-		sect()\endAdr = System\programSize
-	EndIf
-	
-	curVar = ""
-	
-	ForEach sect()
-; 		Debug sect()\type
-; 		Debug sect()\startAdr
-; 		Debug sect()\endAdr
-; 		Debug "---"
-		ClearList(ifJmp())
-		Select sect()\type
-			Case #SYM_SUB
-				WriteStringN(file, "void " + TokenText(sect()\token) + "() {")
-				tabPos + 1 : tab = Space(tabPos * tabSize)
-			Case 0
-				WriteStringN(file, "")
-				
-				WriteStringN(file, "void MainLoop() {")
-				tabPos + 1: tab = Space(tabPos * tabSize)
-		EndSelect
-		
-		*CPU\IP = sect()\startAdr
-		Repeat
-			
-			; skip subs and fields in main procedure
-			ForEach Parser\dataSect()
-				With Parser\dataSect()
-					Select \type
-						Case #SYM_SUB, #SYM_FIELD
-							If sect()\type = 0 Or \type = #SYM_FIELD
-								If *CPU\IP >= \startAdr And *CPU\IP < \endAdr
-									*CPU\IP = \endAdr
-								EndIf
-							EndIf
-					EndSelect
-				EndWith
-			Next
-			If *CPU\IP >= sect()\endAdr
-				Break
-			EndIf
-			
-			mem = *CPU\RAM(*CPU\IP)
-			*token = System_TokenByIP(*CPU\IP)
-			
-			If *token And System\symTable(*CPU\IP) = #SYM_LABEL
-				WriteStringN(file, "    " + *token\text)
-			EndIf
-			
-			op = mem & $FF
-			*opcode = @Opcode(op)
-			System\adrMode = (mem >> 8) & $FF
-			*CPU\IP + 1
-			
-			For i = 0 To 1
-				param(i)\sym = #Null
-				param(i)\name = ""
-				param(i)\index = ""
-				param(i)\type = ""
-				param(i)\prefix = ""
-			Next
-			
-			For paramNr = 0 To *opcode\nParams - 1
-				*param = @param(paramNr)
-				
-				If System\adrMode & (#ADR_INDX_DI | #ADR_INDX_IN)
-					If System\adrMode & #ADR_INDIRECT
-						*param\indexType = #ADR_INDIRECT
-						mem = *CPU\RAM(*CPU\IP)
-						*var = System_VarByIP(mem)
-						If *var
-							*param\index = "v_" + *var\name
-						Else
-							*param\index = "?"
-						EndIf
-					Else
-						*param\index = StrF(*CPU\RAM(*CPU\IP))
-					EndIf
-					
-					If FindString("$:@!~#", Left(*param\index, 1))
-						*param\index = Mid(*param\index, 2)
-					EndIf					
-					*CPU\IP + 1
-				EndIf
-				
-				*param\sym = @System\symTable(*CPU\IP)
-				If *param\sym
-					If *param\sym\token
-						*param\name = TokenText(*param\sym\token)
-					Else
-						*param\name = Str(*CPU\RAM(*CPU\IP))
-					EndIf
-					If FindString("$:@!~#", Left(*param\name, 1))
-						*param\name = Mid(*param\name, 2)
-					EndIf
-					
-					*param\type = "float"
-					
-					Select *param\sym\type
-						Case #SYM_FIELD :  : *param\preFix = "a_"
-						Case #SYM_VARIABLE : *param\prefix = "v_"
-						Case #SYM_LABEL : *param\prefix = "l_"
-						Case #SYM_INT : *param\type = "int"
-						Default
-; 							Debug "??? " + Str(*param\sym\type)
-					EndSelect
-				Else
-					Debug "symboltable error"
-				EndIf
-				
-				*param\name = *param\prefix + *param\name
-; 				If System\adrMode & #ADR_POINTER
-; 					*param\name = "*" + *param\name
-; 				EndIf
-				
-				*CPU\IP + 1
-				System\adrMode >> 4
-			Next
-						
-			Protected isIF = 0
-			Select op
-				Case #_SET
-					;curVar = param(0)\name
-					WriteStringN(file, tab + "curVar = &" + param(0)\name + ";")
-				Case #_MOV
-					Select param(0)\type
-						Case "int"
-							WriteStringN(file, tab + "curInt = ("   + param(0)\type + ")" + param(0)\name + ";")	
-							WriteStringN(file, tab + "curVar = (" + param(0)\type + ")curInt;")
-						Case "float"
-							WriteStringN(file, tab + "curFloat = (" + param(0)\type + ")" + param(0)\name + ";")	
-							WriteStringN(file, tab + "curVar = (" + param(0)\type + ")curFloat;")
-					EndSelect
-				Case #_WRT
-					WriteStringN(file, tab + "*" + curVar + " = " + param(0)\name + ";")
-					WriteStringN(file, tab + curVar + "++;")
-				Case #_ADD
-					WriteStringN(file, tab + curVar + " += " + param(0)\name + ";")
-				Case #_SUB
-					WriteStringN(file, tab + curVar + " -= " + param(0)\name + ";")
-				Case #_MUL
-					WriteStringN(file, tab + curVar + " *= " + param(0)\name + ";")
-				Case #_DIV
-					WriteStringN(file, tab + curVar + " /= " + param(0)\name + ";")
-				Case #_POW
-					WriteStringN(file, tab + curVar + " = pow(" + curVar + "," + param(0)\name + ");")
-				Case #_MOD
-					WriteStringN(file, tab + curVar + " = fmod(" + curVar + "," + param(0)\name + ");")
-				Case #_NEG
-					WriteStringN(file, tab + curVar + " = -" + curVar + ";")
-				Case #_INT
-					WriteStringN(file, tab + curVar + " = (int)" + curVar + ";")
-					;Case #_NTH
-				Case #_SGN
-					WriteStringN(file, tab + curVar + " = (0 < " + param(0)\name + ") - (" + param(0)\name + " < 0);")
-				Case #_CIL
-					WriteStringN(file, tab + curVar + " = ceil(" + param(0)\name + ");")
-				Case #_ABS
-					WriteStringN(file, tab + curVar + " = abs(" + param(0)\name + ");")
-				Case #_MIN
-					WriteStringN(file, tab + "FLAGS = (curVar < " + param(0)\name + ");")
-					WriteStringN(file, tab + curVar + " = min(" + curVar + "," + param(0)\name + ");")
-				Case #_MAX
-					WriteStringN(file, tab + "FLAGS = (curVar > " + param(0)\name + ");")
-					WriteStringN(file, tab + curVar + " = max(" + curVar + "," + param(0)\name + ");")
-				Case #_RND
-					WriteStringN(file, tab + curVar + " = (double)rand() / (double)RAND_MAX;")
-				Case #_IFL ; ifl adr exit
-					WriteStringN(file, tab + "if (FLAGS == (int)" + param(0)\name + ") {")
-					isIf = 1
-				Case #_IGR
-					WriteStringN(file, tab + "if (" + curVar + " > " + param(0)\name + ") {")
-					isIf = 1
-				Case #_ILO
-					WriteStringN(file, tab + "if (" + curVar + " < " + param(0)\name + ") {")
-					isIf = 1
-				Case #_IEQ
-					WriteStringN(file, tab + "if (" + curVar + " == " + param(0)\name + ") {")
-					isIf = 1
-				Case #_IGE
-					WriteStringN(file, tab + "if (" + curVar + " >= " + param(0)\name + ") {")
-					isIf = 1
-				Case #_ILE
-					WriteStringN(file, tab + "if (" + curVar + " <= " + param(0)\name + ") {")
-					isIf = 1
-				Case #_INE
-					WriteStringN(file, tab + "if (" + curVar + " != " + param(0)\name + ") {")
-					isIf = 1
-				Case #_JMF ; jmf val exit
-					WriteStringN(file, tab + "if (FLAGS == (int)" + param(0)\name + "){goto " + param(1)\name + ";}")
-					If FindMapElement(loopJmp(), param(0)\name)
-						tabPos = MAX(tabPos - 1, 0) : tab = Space(tabPos * tabSize)
-						WriteStringN(file, tab + "}")
-					EndIf
-				Case #_JMP ; jmp adr
-					If FindMapElement(loopJmp(), param(0)\name)
-						tabPos = MAX(tabPos - 1, 0) : tab = Space(tabPos * tabSize)
-						WriteStringN(file, tab + "}")
-					Else
-						WriteStringN(file, tab + "goto " + param(0)\name + ";")
-					EndIf
-				Case #_STP
-					stepVar = curVar
-					stepCount = param(0)\name
-					WriteStringN(file, tab + stepVar + " -= " + param(0)\name + ";")
-				Case #_TO ; to adr exit
-					WriteStringN(file, tab + "for (;" + stepVar + " < " + param(0)\name + "; " + stepVar + " += " + stepCount + ") {")
-					tabPos + 1 : tab = Space(tabPos * tabSize)
-					loopJmp(Str(*CPU\IP - 2)) = 1
-				Case #_CAL
-					WriteStringN(file, tab + param(0)\name + "();")
-				Case #_RET
-					WriteStringN(file, tab + "return;")
-				Case #_PSH
-					WriteStringN(file, tab + "push(" + param(0)\name + ");")
-				Case #_POP
-					WriteStringN(file, tab + param(0)\name + " = pop();")
-				Case #_PSF
-					WriteStringN(file, tab + "push(FLAGS);")
-				Case #_POF
-					WriteStringN(file, tab + "FLAGS = pop();")
-				Case #_SCR
-					WriteStringN(file, tab + "OpenScreen(" + param(0)\name + "," + param(1)\name + ");")
-				Case #_CLS
-					WriteStringN(file, tab + "ClearScreen(" + param(0)\name + ");")
-				Case #_CLF
-					WriteStringN(file, tab + "colFront = " + param(0)\name + ";")
-				Case #_CLB
-					WriteStringN(file, tab + "colBack = " + param(0)\name + ";")
-				Case #_CHS
-					WriteStringN(file, tab + "charW = " + param(0)\name + ";")
-					WriteStringN(file, tab + "charH = " + param(1)\name + ";")
-				Case #_CXY
-					WriteStringN(file, tab + "charX = " + param(0)\name + ";")
-					WriteStringN(file, tab + "charY = " + param(1)\name + ";")
-				Case #_CHM
-					WriteStringN(file, tab + "charMode = " + param(0)\name + ";")
-				Case #_CHR
-					WriteStringN(file, tab + "DrawChar();")
-				Case #_PLT
-					WriteStringN(file, tab + "Plot(" + param(0)\name + "," + param(1)\name + ", colFront);")
-				Case #_DRW
-					WriteStringN(file, tab + "DrawScreen();")
-				Case #_DLY
-					WriteStringN(file, tab + "Sleep(" + param(0)\name + ");")
-				Case #_INP
-					WriteStringN(file, tab + "key = GetKey();")
-				Case #_KEY
-					WriteStringN(file, tab + "FLAGS = key;")
-				Case #_DBG
-					WriteStringN(file, tab + "printf(" + #DOUBLEQUOTE$ + "%f\n" + #DOUBLEQUOTE$ + ", " + param(0)\name + ");")
-				Case #_END
-					WriteStringN(file, tab + "return;")
-				Default
-					WriteStringN(file, tab + "// Opcode: " + *Opcode\name + " " + param(0)\name + "  " + param(1)\name)
-			EndSelect
-			
-			If isIf
-				tabPos + 1 : tab = Space(tabPos * tabSize)
-				LastElement(ifJmp())
-				If AddElement(ifJmp())
-					ifJmp() = *CPU\RAM(*CPU\IP)
-				EndIf
-			EndIf
-			
-			While LastElement(ifJmp()) And *CPU\IP >= ifJmp()
-				tabPos = MAX(tabPos - 1, 0) : tab = Space(tabPos * tabSize)
-				WriteStringN(file, tab + "}")
-				DeleteElement(ifJmp())
-			Wend
-			
-			Select op
-				Case #_IFL, #_IGR, #_ILO, #_IGE, #_ILE, #_IEQ, #_INE, #_TO
-					*CPU\IP + 1
-			EndSelect
-		Until *CPU\IP >= sect()\endAdr
-		
-		tabPos = MAX(tabPos - 1, 0) : tab = Space(tabPos * tabSize)
-		WriteStringN(file, "}")
-		
-		Select sect()\type
-			Case 0
-				WriteStringN(file, "")
-				WriteStringN(file, "int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {")
-				WriteStringN(file, "    initialize();")				
-				WriteStringN(file, "    MainLoop();")
-				WriteStringN(file, "    cleanUp();")
-				WriteStringN(file, "}")
-		EndSelect
-
-	Next sect()
-	
-	CloseFile(file)
-	*CPU\IP = curIP
-	
-	ProcedureReturn #True
-EndProcedure
-
 Procedure Help_Callback(gadget, url.s)
 	If GetFilePart(url) <> "help.html"
 		ProcedureReturn #False
@@ -2029,7 +1943,7 @@ Procedure System_Help()
 		HideWindow(#w_Help, 0)
 	Else
 		If OpenWindow(#w_Help, 0, 0, 800, 600, #AppTitle$ + " - Help", #PB_Window_TitleBar | #PB_Window_SystemMenu | #PB_Window_SizeGadget)
-			WebGadget(#g_Help, 5, 5, 790, 590, #PB_Compiler_FilePath + "_help\help.html")
+			WebGadget(#g_Help, 5, 5, 790, 590, GetCurrentDirectory() + "_help\help.html")
 			SetGadgetAttribute(#g_Help, #PB_Web_NavigationCallback, @Help_Callback())
 			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopupMenu, 1)
 			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopups, 1)
@@ -2039,629 +1953,23 @@ EndProcedure
 
 Procedure System_Quit()
 	System_RunState(0)
-	File_UpdateIni()
 	
-	ForEach File()
-		If File_Close(File()) = #PB_MessageRequester_Cancel
+	While LastElement(File())
+		If File_Close(File(), #True) = #PB_MessageRequester_Cancel
 			ProcedureReturn #False
 		EndIf
-	Next
+	Wend
 	
 	System\state | #STATE_QUIT
 EndProcedure
 
 ;-
 
-Procedure OP_SET()
-	GETVAL_WRITE(System\nextIP, *CPU\V)
-EndProcedure
-
-Procedure OP_MOV()
-	Static r.d
-	GETVAL_READ(System\nextIP, r)
-	SETVAL(*CPU\V, r)
-EndProcedure
-
-Procedure OP_WRT()
-	Static r1, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	SETVAL(r1, r2)
-	SETVAL(*CPU\V, r1 + 1)
-EndProcedure
-
-Procedure OP_ADD()
-	MATH(+)
-EndProcedure
-
-Procedure OP_SUB()
-	MATH(-)
-EndProcedure
-
-Procedure OP_MUL()
-	MATH(*)
-EndProcedure
-
-Procedure OP_POW()
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	SETVAL(*CPU\V, Pow(r1, r2))
-EndProcedure
-
-Procedure OP_DIV()
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	If r2 = 0
-		System_Error(System_LineNrByIP(*CPU\IP), "Division by zero")
-	Else
-		r1 / r2
-		SETVAL(*CPU\V, r1)	
-	EndIf
-EndProcedure
-
-Procedure OP_MOD()
-	Static r1, r2
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	r1 % r2
-	SETVAL(*CPU\V, r1)
-EndProcedure
-
-Procedure OP_NEG()
-	Static r.d	
-	GETVAL(*CPU\V, r)
-	SETVAL(*CPU\V, -r)
-EndProcedure
-
-Procedure OP_INT()
-	Static r
-	GETVAL(*CPU\V, r)
-	SETVAL(*CPU\V, r)
-EndProcedure
-
-Procedure OP_NTH()
-	Static r1, r2, s.s
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	s = Str(r1)
-	r1 = Len(s) - r2
-	If r1 < 1
-		SETVAL(*CPU\V, 0)
-	Else
-		r1 = Val(Mid(s, r1, 1))
-		SETVAL(*CPU\V, r1)
-	EndIf
-EndProcedure
-
-Procedure OP_SGN()
-	Static r
-	GETVAL(*CPU\V, r)
-	SETVAL(*CPU\V, Sign(r))
-EndProcedure
-
-Procedure OP_CIL()
-	Static r.d
-	GETVAL(*CPU\V, r)
-	SETVAL(*CPU\V, Round(r, #PB_Round_Up))
-EndProcedure
-
-Procedure OP_ABS()
-	Static r.d
-	GETVAL(*CPU\V, r)
-	SETVAL(*CPU\V, Abs(r))
-EndProcedure
-
-Procedure OP_MIN()
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	If r1 < r2
-		r1 = r2
-		*CPU\FLAGS = 1
-	Else
-		*CPU\FLAGS = 0
-	EndIf	
-	SETVAL(*CPU\V, r1)
-EndProcedure
-
-Procedure OP_MAX()
-	Static r1.d, r2.d
-	GETVAL(*CPU\V, r1)
-	GETVAL_READ(System\nextIP, r2)
-	If r1 > r2
-		r1 = r2
-		*CPU\FLAGS = 1
-	Else
-		*CPU\FLAGS = 0
-	EndIf	
-	SETVAL(*CPU\V, r1)
-EndProcedure
-
-Procedure OP_RND()
-	SETVAL(*CPU\V, Random(100000) / 100000.0)
-EndProcedure
-
-Procedure OP_IFL()
-	Static r
-	GETVAL_READ(System\nextIP, r)
-	If *CPU\FLAGS = r
-		System\nextIP + 1
-	Else
-		GETVAL(System\nextIP, System\nextIP)
-	EndIf
-EndProcedure
-
-Procedure OP_IGR()
-	COMPARE(>, #FLAG_GREATER, #FLAG_LOWER | #FLAG_EQUAL)
-EndProcedure
-
-Procedure OP_ILO()
-	COMPARE(<, #FLAG_LOWER, #FLAG_GREATER | #FLAG_EQUAL)
-EndProcedure
-
-Procedure OP_IEQ()
-	COMPARE(=, #FLAG_EQUAL, #FLAG_NOTEQUAL)
-EndProcedure
-
-Procedure OP_IGE()
-	COMPARE(>=, #FLAG_GREATER | #FLAG_EQUAL, #FLAG_LOWER)
-EndProcedure
-
-Procedure OP_ILE()
-	COMPARE(<=, #FLAG_LOWER | #FLAG_EQUAL, #FLAG_GREATER)
-EndProcedure
-
-Procedure OP_INE()
-	COMPARE(<>, #FLAG_NOTEQUAL, #FLAG_EQUAL)
-EndProcedure
-
-Procedure OP_JMF()
-	Static r1, r2
-	GETVAL_READ(System\nextIP, r1)
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, r2)
-	If *CPU\FLAGS = r1
-		System\nextIP = r2
-	EndIf
-EndProcedure
-
-Procedure OP_STP()
-	Static r.d
-	*CPU\X = *CPU\V
-	GETVAL_READ(System\nextIP, *CPU\C)
-	GETVAL(*CPU\X, r)
-	SETVAL(*CPU\X, r - *CPU\C)
-EndProcedure
-
-Procedure OP_TO()
-	Static v.d, lim.d
-	GETVAL(*CPU\X, v)
-	GETVAL_READ(System\nextIP, lim)
-	If *CPU\C < 0 And v <= lim
-		GETVAL(System\nextIP, System\nextIP)
-	ElseIf *CPU\C > 0 And v >= lim
-		GETVAL(System\nextIP, System\nextIP)
-	Else
-		SETVAL(*CPU\X, v + *CPU\C)
-		System\nextIP + 1
-	EndIf
-EndProcedure
-
-Procedure OP_JMP()
-	Static r
-	GETVAL_READ(System\nextIP, r)
-	System\nextIP = r
-EndProcedure
-
-Procedure OP_CAL()
-	Static r
-	GETVAL_READ(System\nextIP, r)	
-	PUSH(System\nextIP)	; push return address
-	System\nextIP = r
-	System\callDepth + 1
-EndProcedure
-
-Procedure OP_RET()
-	If System\callDepth < 1
-		System_Error(System_LineNrByIP(*CPU\IP), "Return without Call")
-	Else
-		POP(System\nextIP) ; pop return address
-		System\callDepth - 1
-	EndIf
-EndProcedure
-
-Procedure OP_ASP()
-	Static r.d
-	GETVAL_READ(System\nextIP, r)
-	*CPU\SP + r
-EndProcedure
-
-Procedure OP_PSH()
-	Static r.d
-	GETVAL_READ(System\nextIP, r)
-	PUSH(r)
-EndProcedure
-
-Procedure OP_POP()
-	Static w, r.d
-	GETVAL_WRITE(System\nextIP, w)
-	POP(r)
-	SETVAL(w, r)
-EndProcedure
-
-Procedure OP_PSF()
-	PUSH(*CPU\FLAGS)
-EndProcedure
-
-Procedure OP_POF()
-	POP(*CPU\FLAGS)
-EndProcedure
-
-Procedure OP_PSC()
-	PUSH(*CPU\C)
-	PUSH(*CPU\X)
-EndProcedure
-
-Procedure OP_POC()
-	POP(*CPU\X)
-	POP(*CPU\C)
-EndProcedure
-	
-Procedure OP_SCR()
-	GETVAL_READ(System\nextIP, System\SCR_Width)
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, System\SCR_Height)
-	
-	System\SCR_Width = CLAMP(System\SCR_Width, 1, 1000)
-	System\SCR_Height = CLAMP(System\SCR_Height, 1, 1000)
-	System\VRAM_Size = System\SCR_Width * System\SCR_Height
-	
-	Dim *CPU\VRAM(System\VRAM_Size)
-	
-	If IsWindow(#w_Screen)
-		System_CloseScreen(#True)
-		System\SCR_Active = OpenWindowedScreen(WindowID(#w_Screen), 0, 0, System\SCR_Width, System\SCR_Height, 1, 0, 0, #PB_Screen_NoSynchronization)
-		
-		If *CurrentFile
-			SetWindowTitle(#w_Screen, *CurrentFile\path)
-		EndIf
-
-		SetWindowState(#w_Screen, #PB_Window_Maximize)
-		PostEvent(#PB_Event_SizeWindow, #w_Screen, 0, 0, 1)
-		
-		If System\SCR_Active
-			ClearScreen(0)
-			FlipBuffers()
-			ReleaseMouse(1)
-		EndIf
-		
-		System\SCR_Visible = #True
-		HideWindow(#w_Screen, 0)
-	EndIf
-EndProcedure
-
-Procedure OP_CLS()
-	Static r.b, size
-	GETVAL_READ(System\nextIP, r)
-
-	ClearScreen(#SCR_BACKGROUND)
-	size = ArraySize(*CPU\VRAM())
-	If size >= 0
-		FillMemory(@*CPU\VRAM(0), size * 2, r, TypeOf(r))
-	EndIf
-EndProcedure
-
-Procedure OP_CHS()
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_CHR_W))
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_CHR_H))
-EndProcedure
-
-Procedure OP_CHM()
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_CHR_MODE))
-EndProcedure
-
-Procedure OP_CXY()
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_CHR_X))
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_CHR_Y))
-EndProcedure
-
-Procedure OP_CHR()
-	Static source, x, y, cx, cy
-	Static chrW, chrH, chrX, chrY, chrMode, scrW, scrH
-	Static adrR, adrV, adrStart, adrAdd, adrSub
-	Static.u color, collision, colID, colF, colB
-	
-	GETVAL_READ(System\nextIP, source)
-	
-	If source < 0 Or source >= System\RAM_Size
-		ProcedureReturn
+Procedure Parse_WriteF(value.d, ip = -1, varType = #SYM_FLOAT)
+	If Parser\preParse
+		ProcedureReturn #True
 	EndIf
 	
-	scrW = System\SCR_Width
-	scrH = System\SCR_Height
-	GETVAL(System\ADR_Collision, collision)
-	GETVAL(System\ADR_COL_Front, colF)
-	GETVAL(System\ADR_COL_Back, colB)
-	GETVAL(System\ADR_CHR_X, chrX)
-	GETVAL(System\ADR_CHR_Y, chrY)
-	GETVAL(System\ADR_CHR_W, chrW)
-	GETVAL(System\ADR_CHR_H, chrH)
-	GETVAL(System\ADR_CHR_MODE, chrMode)
-	GETVAL(System\ADR_CollisionID, colID)
-	colID << 8
-
-	chrW - 1
-	chrH - 1
-	
-	Select chrMode
-		Case 0 ; normal mode
-			adrStart = source
-			adrAdd = 1
-			adrSub = 0
-		Case 1 ; rotate 90°
-			adrStart = source + chrH * (chrW + 1)
-			adrAdd = -(chrW + 1)
-			adrSub = (chrW + 1) * (ChrH + 1) + 1
-			Swap chrW, chrH
-		Case 2 ; rotate 180°
-			adrStart = source + (ChrW + 1) * (chrH + 1) - 1
-			adrAdd = -1
-			adrSub = 0
-		Case 3 ; rotate 270°
-			adrStart = source + chrW
-			adrAdd = chrW + 1
-			adrSub = -(chrW + 1) * (chrH + 1) - 1
-			Swap chrW, chrH
-		Case 4 ; flip x-axis
-			adrStart = source + ChrW
-			adrAdd = -1
-			adrSub =  ChrW * 2 + 2
-		Case 5 ; flip y-axis
-			adrStart = source + ChrH * (chrW + 1)
-			adrAdd = 1
-			adrSub = -(chrW + 1) * 2
-		Default ; normal mode
-			adrStart = source
-			adrAdd = 1
-			adrSub = 0
-	EndSelect
-	
-	If colF
-		
-		adrR = adrStart
-		cy = chrY
-		For y = 0 To chrH
-			cx = chrX
-			adrV = cx + cy * scrW
-			For x = 0 To chrW
-				If cx >= 0 And cx < scrW And cy >= 0 And cy < scrH
-					color = *CPU\RAM(adrR)
-					If color
-						If collision = 0
-							collision = *CPU\VRAM(adrV)
-							If collision & $FF00 ; collision found! 
-								collision >> 8
-								SETVAL(System\ADR_Collision, collision)
-							EndIf
-						EndIf
-						color | colID ; add collision ID to the color
-						*CPU\VRAM(adrV) = colF
-					Else
-						*CPU\VRAM(adrV) = colB
-					EndIf
-				EndIf
-				adrR + adrAdd
-				adrV + 1
-				cx + 1
-			Next
-			adrR + adrSub
-			cy + 1
-		Next
-		
-	Else		
-		
-		adrR = adrStart
-		cy = chrY
-		For y = 0 To chrH
-			cx = chrX
-			adrV = cx + cy * scrW
-			For x = 0 To chrW
-				If cx >= 0 And cx < scrW And cy >= 0 And cy < scrH
-					color = *CPU\RAM(adrR)
-					If color
-						If collision = 0
-							collision = *CPU\VRAM(adrV)
-							If collision & $FF00 ; collision found! 
-								collision >> 8
-								SETVAL(System\ADR_Collision, collision)
-							EndIf
-						EndIf
-						color | colID ; add collision ID to the color
-						*CPU\VRAM(adrV) = color
-					ElseIf colB
-						*CPU\VRAM(adrV) = colB
-					EndIf
-				EndIf
-				adrR + adrAdd
-				adrV + 1
-				cx + 1
-			Next
-			adrR + adrSub
-			cy + 1
-		Next
-		
-	EndIf
-EndProcedure
-
-Procedure OP_CLF()
-	Static r.a	
-	GETVAL_READ(System\nextIP, r)
-	*CPU\RAM(System\ADR_COL_Front) = r
-EndProcedure
-
-Procedure OP_CLB()
-	Static r.a
-	GETVAL_READ(System\nextIP, r)
-	*CPU\RAM(System\ADR_COL_Back) = r
-EndProcedure
-
-Procedure OP_PLT()
-	Static x, y, adr
-	GETVAL_READ(System\nextIP, x)
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, y)
-	adr = x + y * System\SCR_Width
-	If adr >= 0 And adr < System\VRAM_Size
-		GETVAL(System\ADR_COL_Front, *CPU\VRAM(adr))
-	EndIf
-EndProcedure
-
-Procedure OP_DRW()
-	Static x, y, scrW, scrH, adrV, c.a
-	
-	If System\SCR_Active
-		If StartDrawing(ScreenOutput())
-			scrW = System\SCR_Width - 1
-			scrH = System\SCR_Height - 1
-			adrV = 0
-			For y = 0 To scrH
-				For x = 0 To scrW
-					c = *CPU\VRAM(adrV)
-					Plot(x, y, *CPU\RAM(System\ADR_Color + c))
-					adrV + 1
-				Next
-			Next
-			StopDrawing()
-			
-			FlipBuffers()
-		EndIf
-	EndIf
-EndProcedure
-
-Procedure OP_DLY()
-	Static r, curIP, nextIP
-	If System\wait = 0
-		curIP = System\nextIP
-		GETVAL_READ(System\nextIP, r)
-		System\wait = System\time + r
-		nextIP = System\nextIP
-		System\nextIP = curIP
-	ElseIf System\time >= System\wait
-		System\wait = 0
-		System\nextIP = nextIP
-	Else
-		Delay(5)
-	EndIf
-EndProcedure
-
-Procedure OP_INP()
-	If System\SCR_Active
-		ExamineMouse()
-		ExamineKeyboard()
-		
-		*CPU\FLAGS = KeyboardPushed(#PB_Key_All)
-		System\MouseX = MouseX()
-		System\MouseY = MouseY()
-		System\MouseB = 0
-		
-		If MouseButton(#PB_MouseButton_Left)
-			System\MouseB | #Button_Left
-		EndIf
-		If MouseButton(#PB_MouseButton_Right)
-			System\MouseB | #Button_Right
-		EndIf
-	Else
-		*CPU\FLAGS = 0
-	EndIf
-EndProcedure
-
-Procedure OP_KEY()
-	Static r
-	GETVAL_READ(System\nextIP, r)
-	*CPU\FLAGS = Bool(KeyboardPushed(r))
-EndProcedure
-
-Procedure OP_SNP()
-	Static r1, r2
-	GETVAL_READ(System\nextIP, r1)
-	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, r2)
-	
-	If SoundSystemOK
-		If r1
-			If IsSound(r1)
-				If r2 = 0
-					StopSound(r1)
-				ElseIf r2 = 2
-					PauseSound(r1)
-				Else
-					PlaySound(r1)
-				EndIf
-			EndIf
-		Else
-			If r2 = 2
-				PauseSound(#PB_All)
-			Else
-				StopSound(#PB_All)
-			EndIf
-		EndIf
-	EndIf
-EndProcedure
-
-Procedure OP_SNS()
-	Static r
-	GETVAL_READ(System\nextIP, r)
-	
-	If SoundSystemOK
-		*CPU\FLAGS = -1
-		If IsSound(r)
-			Select SoundStatus(r)
-				Case #PB_Sound_Stopped : *CPU\FLAGS = 0
-				Case #PB_Sound_Playing : *CPU\FLAGS = 1
-				Case #PB_Sound_Paused : *CPU\FLAGS = 2
-			EndSelect
-		EndIf
-	EndIf
-EndProcedure
-
-Procedure OP_DBG()
-	Static r.d
-	GETVAL_READ(System\nextIP, r)
-	
-	While CountGadgetItems(#g_Error) > 100
-		RemoveGadgetItem(#g_Error, 0)
-	Wend
-
-	AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "value: " + FSTR(r), 0)
-	SetGadgetState(#g_Error, CountGadgetItems(#g_Error) - 1)
-EndProcedure
-
-Procedure OP_HLT()
-	System_Error(System_LineNrByIP(*CPU\IP) + 1, "HALT - PROGRAM PAUSED!", #True)
-	System_RunState((RunState & ~(#STATE_PAUSE | #STATE_STEPOUT)) | (#STATE_STEP | #STATE_RUN))
-EndProcedure
-
-Procedure OP_END()
-	System\state | #STATE_END
-	System_CloseScreen(#True)
-	System_RunState(0)
-EndProcedure
-
-Procedure OP_KIL()
-	Static r.d
-	GETVAL(*CPU\IP, r)
-	System_Error(System_LineNrByIP(*CPU\IP), "Illegal opcode: " + FSTR(r))
-	System\state | #STATE_END
-	System_RunState(0)
-EndProcedure
-
-;-
-
-Procedure Parse_WriteF(value.d, ip = -1)
 	Protected lineNr
 	
 	If ip = -1
@@ -2673,8 +1981,8 @@ Procedure Parse_WriteF(value.d, ip = -1)
 	EndIf
 	
 	SETVAL(ip, value)		
-	If System\state & #STATE_ERROR = 0
-		System\symTable(ip)\type = #SYM_FLOAT
+	If SYSTEM_NOERROR()
+		System\symTable(ip)\type = varType
 		System\symTable(ip)\lineNr = lineNr
 		ProcedureReturn #True
 	EndIf
@@ -2685,6 +1993,10 @@ EndProcedure
 Procedure Parse_WriteI(value, type, *token.TOKEN = #Null, ip = -1)
 	Protected lineNr
 	
+	If Parser\preParse And ip = -1
+		ProcedureReturn #True
+	EndIf
+	
 	If ip = -1
 		lineNr = Parser\curLine
 		ip = *CPU\IP
@@ -2694,10 +2006,11 @@ Procedure Parse_WriteI(value, type, *token.TOKEN = #Null, ip = -1)
 	EndIf
 	
 	SETVAL(ip, value)
-	If System\state & #STATE_ERROR = 0
+	If SYSTEM_NOERROR()
 		System\symTable(ip)\type = type
 		System\symTable(ip)\token = *token
 		System\symTable(ip)\lineNr = lineNr
+		System\symTable(ip)\var = Parser\curVar
 		ProcedureReturn #True
 	EndIf
 
@@ -2724,19 +2037,55 @@ Procedure Parse_IsNumber(param.s)
 	ProcedureReturn #True
 EndProcedure
 
-Procedure Parse_AddVar(name.s, *token)
-	Protected uName.s = UCase(name)
+Procedure Parse_IsMainSub(*sub.SUB)
+	If *sub\parent = #Null
+		; the main sub has no parent
+		ProcedureReturn #True
+	EndIf
+	ProcedureReturn #False
+EndProcedure
 	
-	Parser\curVar = FindMapElement(Parser\var(), uName)
-	If Parser\curVar = #Null
-		Parser\curVar = AddMapElement(Parser\var(), uName)
-		If Parser\curVar
-			Parser\curVar\name = name
-			Parser\curVar\adr = System\ADR_Var
-			System\symTable(Parser\curVar\adr)\token = *token
-			;Parse_WriteI(Parser\curVar\adr, #SYM_INT, *token, Parser\curVar\adr)
-			SETVAL(System\ADR_VarPointer, System\ADR_Var)
-			System\ADR_Var - 1
+Procedure Parse_AddVar(*sub.SUB, name.s, varType.a, *token, isLocal = #False)
+	Protected key.s = UCase(name)
+
+	; does the variable already exist in the local variable Map?
+	Parser\curVar = FindMapElement(*sub\var(), key)
+	If Parser\curVar = #Null	
+		
+		If isLocal = #False And Parse_IsMainSub(*sub) = #False
+			; does the variable already exist in the global variable Map?
+			Parser\curVar = FindMapElement(Parser\main\var(), key)
+		EndIf
+		
+		If Parser\curVar = #Null
+			; variable does not exist -> create new one
+			Parser\curVar = AddMapElement(*sub\var(), key)
+			If Parser\curVar
+				LastElement(*sub\vars())
+				AddElement(*sub\vars())
+				*sub\vars() = Parser\curVar
+				
+				Parser\curVar\token = *token
+				Parser\curVar\sub = *sub
+				Parser\curVar\name = name
+				Parser\curVar\type = varType
+				Parser\curVar\adr = System\ADR_Var
+				
+				If Parse_IsMainSub(*sub)
+					Parser\curVar\isLocal = #False
+;   					Debug MEMSTR(System\ADR_Var) + "   " + LSet(*sub\name, 25) + LSet(name, 25) + LSet(Str(varType), 4) + ": new Global var"
+				Else
+					Parser\curVar\isLocal = isLocal
+;   					Debug MEMSTR(System\ADR_Var) + "   " + LSet(*sub\name, 25) + LSet(name, 25) + LSet(Str(varType), 4) + ": new Local var"
+ 				EndIf
+ 				
+ 				System\symTable(System\ADR_Var)\token = *token
+ 				System\symTable(System\ADR_Var)\var = Parser\curVar
+ 				System\symTable(System\ADR_Var)\type = varType
+ 				
+ 				System\ADR_Var - 1
+ 				
+			EndIf
 		EndIf
 	EndIf
 	
@@ -2751,7 +2100,13 @@ Procedure Parse_AddDataSect(type, *token.TOKEN, adr, lineNr)
 	Parser\curDataSect = AddElement(Parser\dataSect())
 	If Parser\curDataSect
 		With Parser\curDataSect
-			\type = type
+			If type = #SYM_SUB
+				\isSub = #True
+			ElseIf type = #SYM_FIELD
+				\isField = #True
+			ElseIf type = #SYM_LABEL
+				\isLabel = #True
+			EndIf
 			\token = *token
 			\startAdr = adr
 			\endAdr = adr
@@ -2761,13 +2116,20 @@ Procedure Parse_AddDataSect(type, *token.TOKEN, adr, lineNr)
 	ProcedureReturn Parser\curDataSect
 EndProcedure
 
-Procedure Parse_AddReference(type, *token.TOKEN, typeName.s, lineNr)
+Procedure Parse_AddReference(type, *sub.SUB, *token.TOKEN, typeName.s, lineNr)
 	Protected *reference.DATASECT = AddElement(Parser\reference())
 	
 	If *reference = #Null
 		System_Error(Parser\codeLineCount, "couldn't create " + typeName + "reference")
 	Else
-		*reference\type = type
+		If type = #SYM_SUB
+			*reference\isSub = #True
+		ElseIf type = #SYM_FIELD
+			*reference\isField = #True
+		ElseIf type = #SYM_LABEL
+			*reference\isLabel = #True
+		EndIf
+		*reference\sub = *sub
 		*reference\token = *token
 		*reference\startAdr = *CPU\IP
 		*reference\lineNr = lineNr
@@ -2776,25 +2138,43 @@ Procedure Parse_AddReference(type, *token.TOKEN, typeName.s, lineNr)
 	ProcedureReturn *reference
 EndProcedure
 
-Procedure Parse_SetAddressMode(index, adrMode.a)
+Procedure Parse_AddBracket()
+	LastElement(Parser\bracketList())
+	If AddElement(Parser\bracketList())
+		Parser\bracketList()\lineNr = Parser\curLine
+	EndIf
+EndProcedure
+
+Procedure Parse_SetAddressMode(paramNr, adrMode.a)
 	Protected opcode
 
-	If Parser\curOpcode = #Null
-		System_Error(Parser\codeLineCount, "Syntax Error - Missing Command")
+	GETVAL(Parser\curIP, opcode)
+	If paramNr <= 0
+		opcode | (adrMode << 8)
+	ElseIf paramNr = 1
+		opcode | (adrMode << 12)
 	Else
-		GETVAL(Parser\curIP, opcode)
-		If index <= 0
-			opcode | (adrMode << 8)
-			; 			opcode = (opcode & $F0FF) | (adrMode << 8)	
-		ElseIf index = 1
-			opcode | (adrMode << 12)
-			; 			opcode = (opcode & $0FFF) | (adrMode << 12)
+		System_Error(Parser\codeLineCount, "Parse_SetAddressMode: wrong paramNr: " + Str(paramNr))
+	EndIf
+	
+	Parser\curAdrMode | adrMode
+	SETVAL(Parser\curIP, opcode)
+EndProcedure
+
+Procedure Parse_AddSound(*variable.VARIABLE, path.s)
+	Protected key.s = UCase(Parser\curVar\name)
+	
+	If FindMapElement(System\sound(), key) 
+		SETVAL(*variable\adr, System\sound())
+	ElseIf AddMapElement(System\sound(), key)
+		System\sound() = LoadSound(#PB_Any, path)
+		If IsSound(System\sound())
+			SETVAL(*variable\adr, System\sound())
 		Else
-			System_Error(Parser\codeLineCount, "Parse_SetAddressMode: wrong index: " + Str(index))
+			System_Error(Parser\curLine, "sound not loaded: "+ path, #True)
 		EndIf
-		
-		Parser\curAdrMode | adrMode
-		SETVAL(Parser\curIP, opcode)
+	Else
+		System_Error(Parser\curLine, "Parse_AddSound: Couldn't add Map element")
 	EndIf
 EndProcedure
 
@@ -2804,9 +2184,9 @@ Procedure.s Parser_TokenText(*token.TOKEN)
 	EndIf
 EndProcedure
 
-Procedure Parse_Token(*token.TOKEN, index = 0, addNew = #False)
+Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLocal = #False)
 	Protected value, address
-	Protected text.s, uText.s, key.s, varType
+	Protected text.s, uText.s, key.s, adrMode
 	
 	If *token = #Null
 		System_Error(Parser\codeLineCount, "Null Token")
@@ -2827,53 +2207,84 @@ Procedure Parse_Token(*token.TOKEN, index = 0, addNew = #False)
 	text = LTrim(text, "@")	   ; Pointer
 	text = LTrim(text, "!")	   ; Read Value
 	text = LTrim(text, "~")	   ; Array
-	text = LTrim(text, "#")	   ; Flag
+	text = LTrim(text, "#")	   ; Constant
 	uText = UCase(text)
-	varType = Asc(*token\text)
+	adrMode = Asc(*token\text)
 	
-;  	Debug "    token: " + TokenText(*token) + " type: " + Str(*token\type) + "   index Nr.: " + Str(index)
+;   	Debug "SUB:" + RSet(*sub\name, 8) + "    token: " + RSet(TokenText(*token), 8) + " type: " + RSet(GetTokenName(*token\type), 12) + "   paramNr Nr.: " + Str(paramNr)
+	
+	;If FindMapElement(Parser\sub(), key)
+		
 	
 	If *token\type = #T_SUB
 		
-		If addNew
-
-			If FindMapElement(Parser\sub(), key)
-				System_Error(Parser\codeLineCount, "Sub already defined: " + text)
-			ElseIf AddMapElement(Parser\sub(), key) = 0
-				System_Error(Parser\codeLineCount, "couldn't create Sub: " + text)
+		If createNew
+			
+			Parser\curSub = FindMapElement(*sub\sub(), key)
+			If Parser\preParse
+				If Parser\curSub
+					System_Error(Parser\codeLineCount, "Sub already defined: " + text)
+				Else
+					Parser\curSub = AddMapElement(*sub\sub(), key)
+					If Parser\curSub = #Null
+						System_Error(Parser\codeLineCount, "couldn't create Sub: " + text)
+					Else
+						Parser\curSub\dataSect = Parse_AddDataSect(#SYM_SUB, *token, *CPU\IP, Parser\codeLineCount)
+						Parser\curSub\name = text
+						Parser\curSub\parent = *sub
+					EndIf
+				EndIf
+			ElseIf Parser\curSub
+				Parser\curDataSect = Parser\curSub\dataSect
+				Parser\curDataSect\startAdr = *CPU\IP
+				Parser\curDataSect\endAdr = *CPU\IP
+				Parser\curDataSect\lineNr = Parser\codeLineCount
 			Else
-				Parser\sub() = Parse_AddDataSect(#SYM_SUB, *token, *CPU\IP, Parser\codeLineCount)
+				System_Error(Parser\codeLineCount, "Sub not defined: " + text)
 			EndIf
 			
 		Else
-			
-			Parse_SetAddressMode(index, #ADR_DIRECT)
-			Parse_AddReference(#SYM_SUB, *token, "Sub", Parser\codeLineCount)
+
+			Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+			Parse_AddReference(#SYM_SUB, *sub, *token, "Sub", Parser\codeLineCount)
 			
 		EndIf
 		
 	ElseIf *token\type = #T_FIELD
 		
-		If addNew
+		If createNew
 			
-			If FindMapElement(Parser\field(), key)
-				System_Error(Parser\codeLineCount, "Field already defined: " + text)
-			ElseIf AddMapElement(Parser\field(), key) = 0
-				System_Error(Parser\codeLineCount, "couldn't create Field: " + text)
+			Parser\curField = FindMapElement(Parser\field(), key)
+			If Parser\preParse
+				If Parser\curField
+					System_Error(Parser\codeLineCount, "Field already defined: " + text)
+				Else
+					Parser\curField = AddMapElement(Parser\field(), key)
+					If Parser\curField = #Null
+						System_Error(Parser\codeLineCount, "couldn't create Field: " + text)
+					Else
+						Parser\field() = Parse_AddDataSect(#SYM_FIELD, *token, *CPU\IP, Parser\codeLineCount)
+					EndIf
+				EndIf
+			ElseIf Parser\curField
+				Parser\curDataSect = Parser\field()
+				Parser\curDataSect\startAdr = *CPU\IP
+				Parser\curDataSect\endAdr = *CPU\IP
+				Parser\curDataSect\lineNr = Parser\codeLineCount
 			Else
-				Parser\field() = Parse_AddDataSect(#SYM_FIELD, *token, *CPU\IP, Parser\codeLineCount)
+				System_Error(Parser\codeLineCount, "Field not defined: " + text)
 			EndIf
 			
 		Else
 			
-			Parse_SetAddressMode(index, #ADR_DIRECT)
-			Parse_AddReference(#SYM_FIELD, *token, "Field", Parser\codeLineCount)
+			Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+			Parse_AddReference(#SYM_FIELD, *sub, *token, "Field", Parser\codeLineCount)
 			
 		EndIf
 		
 	ElseIf *token\type = #T_LABEL
 		
-		If addNew
+		If createNew
 			
 			If FindMapElement(Parser\label(), key)
 				System_Error(Parser\codeLineCount, "Label already defined: " + text)
@@ -2885,52 +2296,51 @@ Procedure Parse_Token(*token.TOKEN, index = 0, addNew = #False)
 			
 		Else
 			
-			Parse_SetAddressMode(index, #ADR_DIRECT)
-			Parse_AddReference(#SYM_LABEL, *token, "Label", Parser\codeLineCount)
+			Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+			Parse_AddReference(#SYM_LABEL, *sub, *token, "Label", Parser\codeLineCount)
 			
 		EndIf
 		
-	ElseIf varType = '#'
-		; param is a CONSTANT
+	ElseIf adrMode = '#' ; param is a CONSTANT
 		
-		If FindMapElement(Parser\constant(), uText)
-			
-			If Parser\constant()\type = #SYM_ADDRESS
-				Parse_SetAddressMode(index, #ADR_INDIRECT)
-				Parse_WriteI(PeekI(Parser\constant()\value), #SYM_CONSTANT, *token)
+		If FindMapElement(Constant(), key)
+			If Constant()\type = #SYM_ADDRESS
+				Parse_SetAddressMode(paramNr, #ADR_INDIRECT)
+				Parse_WriteI(PeekI(Constant()\value), #SYM_CONSTANT, *token)
 			Else
-				Parse_SetAddressMode(index, #ADR_DIRECT)
-				Parse_WriteI(Parser\constant()\value, #SYM_CONSTANT, *token)
+				Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+				Parse_WriteI(Constant()\value, #SYM_CONSTANT, *token)
 			EndIf
 		Else
 			System_Error(Parser\codeLineCount, "Unknown constant: " + text)
 		EndIf
-		
+					
 	ElseIf *token\type = #T_NUMBER
 		
-		Parse_SetAddressMode(index, #ADR_DIRECT)
+		Parse_SetAddressMode(paramNr, #ADR_DIRECT)
 		Parse_WriteF(*token\value)
+		
+	ElseIf *token\type = #T_STRING
+		
+		Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+		Parse_WriteI(*token, #SYM_INT)
 		
 	ElseIf *token\type = #T_VARIABLE
 		
-		If Parse_AddVar(text, *token)
-			Select varType
+		If Parse_AddVar(*sub, text, Parser\curVarType, *token, isLocal)
+			Select adrMode
 				Case '@'
 					; param is a the ADDRESS of a variable
-					Parse_SetAddressMode(index, #ADR_DIRECT)
-					Parse_WriteI(Parser\curVar\adr, #SYM_ADDRESS, *token)
+					Parse_SetAddressMode(paramNr, #ADR_DIRECT)
+ 					Parse_WriteI(Parser\curVar\adr, #SYM_ADDRESS, *token)
 				Case '!'
 					; param is a value read from a pointer
-					Parse_SetAddressMode(index, #ADR_POINTER | #ADR_INDIRECT)
+					Parse_SetAddressMode(paramNr, #ADR_POINTER | #ADR_INDIRECT)
 					Parse_WriteI(Parser\curVar\adr, #SYM_VARIABLE, *token)
 				Default
-					If index < 0
-						; param is a sub parameter variable
-					Else
-						; param is a normal variable
-						Parse_WriteI(Parser\curVar\adr, #SYM_VARIABLE, *token)
-						Parse_SetAddressMode(index, #ADR_INDIRECT)
-					EndIf
+					; param is a normal variable
+					Parse_SetAddressMode(paramNr, #ADR_INDIRECT)
+					Parse_WriteI(Parser\curVar\adr, #SYM_VARIABLE, *token)
 			EndSelect
 		EndIf
 		
@@ -2945,8 +2355,8 @@ Procedure Parse_Token(*token.TOKEN, index = 0, addNew = #False)
 			System\ADR_Var - 1
 		Next
 		
-		If Parse_AddVar("STR_" + Str(Parser\stringIndex), *token)
-			Parse_SetAddressMode(index, #ADR_INDIRECT)
+		If Parse_AddVar(*sub, "STR_" + Str(Parser\stringIndex), #SYM_CHAR, *token)
+			Parse_SetAddressMode(paramNr, #ADR_INDIRECT)
 			Parse_WriteI(Parser\curVar\adr, #SYM_STRING)
 		EndIf
 		
@@ -2956,7 +2366,7 @@ Procedure Parse_Token(*token.TOKEN, index = 0, addNew = #False)
 		
 	EndIf
 	
-	If System\state & #STATE_ERROR
+	If SYSTEM_HASERROR()
 		Parser\curVar = #Null
 		ProcedureReturn #False
 	Else
@@ -2995,9 +2405,18 @@ Procedure Parse_NextToken(type = #T_UNKNOWN, throwError = #False)
 	Protected *token.TOKEN
 	Protected index = Parser\tokenIndex
 	Protected prevLineNr = Parser\codeLineCount
-
+	Protected lastIndex
+	Protected *macro.XMACROCALL = LastElement(Parser\curMacro())
+	
+	If *macro
+		lastIndex = *macro\xMacro\lastTokenIndex
+	Else
+		lastIndex = Parser\tokenCount
+	EndIf
+	
 	Parser\curToken = #Null
-	While index < Parser\tokenCount And (System\state & #STATE_ERROR) = 0
+			
+	While index < lastIndex And SYSTEM_NOERROR()
 		*token = @Parser\token(index)\type
 		index + 1
 		Select *token\type
@@ -3005,17 +2424,55 @@ Procedure Parse_NextToken(type = #T_UNKNOWN, throwError = #False)
 			Case #T_NEWLINE
 				Parser\codeLineCount + 1
 			Default
-				If type = #T_UNKNOWN Or type = *token\type
+				If (Parser\preParse = #False) And (*token\type = #T_VARIABLE) And FindMapElement(Parser\xmacro(), UCase(TokenText(*token)))
 					Parser\tokenIndex = index
-					Parser\curToken = *token
+					
+					Protected NewMap *replace.TOKEN()
+					ForEach Parser\xmacro()\argList()
+						If Parse_NextToken()
+							*replace(UCase(TokenText(Parser\xmacro()\argList()))) = Parser\curToken
+						Else
+							Break
+						EndIf
+					Next
+					
+					LastElement(Parser\curMacro())
+					If AddElement(Parser\curMacro())
+						CopyMap(*replace(), Parser\curMacro()\replace())
+						Parser\curMacro()\xMacro = Parser\xmacro()
+						Parser\curMacro()\nextTokenIndex = Parser\tokenIndex; - 1
+						Parser\curMacro()\codeLine = Parser\codeLineCount
+						Parser\codeLineCount = Parser\xmacro()\firstLineNr
+						Parser\tokenIndex = Parser\xmacro()\firstTokenIndex
+						
+						ProcedureReturn Parse_NextToken(type, throwError)
+					EndIf
+					
+					FreeMap(*replace())
+				ElseIf type = #T_UNKNOWN Or type = *token\type
+					Parser\tokenIndex = index
+					If *macro And FindMapElement(*macro\replace(), UCase(TokenText(*token)))
+						Parser\curToken = *macro\replace()
+					Else
+						Parser\curToken = *token
+					EndIf
 				ElseIf throwError
-					System_Error(Parser\codeLineCount, "Syntax Error")
+					System_Error(Parser\curLine, "Syntax Error - expected '" + GetTokenName(type) + "'")
 				EndIf
 				Break
 		EndSelect
 	Wend
+
+	If *macro And index >= lastIndex
+		Parser\curToken = #Null
+		Parser\tokenIndex = *macro\nextTokenIndex
+		Parser\codeLineCount = *macro\codeLine
+		LastElement(Parser\curMacro())
+		DeleteElement(Parser\curMacro())
+		Parser\curToken = Parse_NextToken(type, throwError)
+	EndIf
 	
-	If (System\state & #STATE_ERROR) Or Parser\curToken = #Null
+	If SYSTEM_HASERROR() Or Parser\curToken = #Null
 		Parser\codeLineCount = prevLineNr
 		ProcedureReturn #Null
 	EndIf
@@ -3023,17 +2480,31 @@ Procedure Parse_NextToken(type = #T_UNKNOWN, throwError = #False)
 	ProcedureReturn Parser\curToken
 EndProcedure
 
-Procedure Parse_Field()
+Procedure Parse_VarType(*sub.SUB)
+	If Parse_NextToken(#T_INT) 
+		Parser\curVarType = #SYM_INT
+	ElseIf Parse_NextToken(#T_FLOAT) 
+		Parser\curVarType = #SYM_FLOAT
+	ElseIf Parse_NextToken(#T_CHAR) 
+		Parser\curVarType = #SYM_CHAR
+	Else
+		Parser\curVarType = #SYM_INT
+		ProcedureReturn #False
+	EndIf
+	ProcedureReturn #True
+EndProcedure
+
+Procedure Parse_Field(*sub.SUB)
 	Protected i, value.d
 	Protected currentLine, fieldSize
 	Protected *dataSect.DATASECT
 	
 	currentLine = Parser\codeLineCount
 	
-	If Parse_Token(Parser\curToken, 0, #True)
+	If Parse_Token(*sub, Parser\curToken, 0, #True)
 		*dataSect = Parser\curDataSect
 		If Parse_NextToken(#T_BRACKET_OPEN, #True)
-			While (System\state & #STATE_ERROR = 0) And Parse_NextToken()
+			While SYSTEM_NOERROR() And Parse_NextToken()
 				Select Parser\curToken\type
 					Case #T_BRACKET_CLOSE
 						*dataSect\endAdr = *CPU\IP
@@ -3041,7 +2512,7 @@ Procedure Parse_Field()
 					Case #T_NUMBER
 						value = Parser\curToken\value
 						If Parse_NextToken(#T_OPCODE)
-							If Parser\curToken\opcode\ID <> #_MUL
+							If Parser\curToken\opcode\ID <> #OP_MUL
 								System_Error(Parser\codeLineCount, "Syntax Error")
 							ElseIf Parse_NextToken(#T_NUMBER, #True)
 								; e.g.:  DAT (0*64)  - allocate 64 slots with value 0
@@ -3063,16 +2534,16 @@ Procedure Parse_Field()
 						; e.g.:  DAT ("123")  - allocate 4 slots with the values 49, 50, 51, 0 (ascii values of 1,2,3 and 0 as end-of-text marker)
 						For i = 1 To Parser\curToken\length - 2
 							value = Asc(Mid(Parser\code, Parser\curToken\position + i, 1))
-							If Parse_WriteI(value, #SYM_STRING)
+							If Parse_WriteI(value, #SYM_CHAR)
 								fieldSize + 1
 							Else
 								ProcedureReturn #False
 							EndIf
 						Next
-						If Parse_WriteI(0, #SYM_STRING)
+						; write '0' as string terminator
+						If Parse_WriteI(0, #SYM_CHAR)
 							fieldSize + 1
 						Else
-							; write '0' as string terminator
 							ProcedureReturn #False
 						EndIf
 					Default
@@ -3087,16 +2558,81 @@ Procedure Parse_Field()
 	ProcedureReturn #False
 EndProcedure
 
-Procedure Parse_Var(index)
+Procedure Parse_Macro()
+	; define macro name [param1|param2|...] (...)
+	Protected name.s, arg.s, bracketCount
+	
+	If Parse_NextToken(#T_VARIABLE, #True)
+		name = TokenText(Parser\curToken)
+		If FindMapElement(Parser\xmacro(), UCase(name))
+			System_Error(parser\curLine, "Macro already defined: " + name)
+		Else
+			If AddMapElement(Parser\xmacro(), UCase(name))
+				Parser\xmacro()\name = name
+			EndIf
+			While Parse_NextToken(#T_VARIABLE)
+				arg = TokenText(parser\curToken)
+				If FindMapElement(Parser\xmacro()\arguments(), UCase(arg))
+					System_Error(parser\curLine, "Argument already defined: " + arg)
+				ElseIf AddMapElement(Parser\xmacro()\arguments(), UCase(arg))
+					Parser\xmacro()\arguments() = Parser\curToken
+					AddElement(Parser\xmacro()\argList())
+					Parser\xmacro()\argList() = Parser\curToken
+				EndIf
+			Wend
+			
+			If Parse_NextToken(#T_BRACKET_OPEN, #True)
+				Parser\xmacro()\firstTokenIndex = parser\tokenIndex
+				Parser\xmacro()\firstLineNr = Parser\codeLineCount
+				bracketCount = 1
+				While bracketCount > 0 And Parse_NextToken()
+					Select Parser\curToken\type
+						Case #T_BRACKET_OPEN
+							bracketCount + 1
+						Case #T_BRACKET_CLOSE
+							bracketCount - 1
+							If bracketCount < 1
+								Parser\xmacro()\lastTokenIndex = parser\tokenIndex
+								Parser\xmacro()\lastLineNr = Parser\codeLineCount
+							EndIf
+						Case #T_VARIABLE
+							If UCase(TokenText(parser\curToken)) = UCase(name)
+								System_Error(Parser\curLine, "Infinite recursion in Macro")
+							EndIf
+					EndSelect
+				Wend
+
+; 				If bracketCount = 0
+; 					Parser\xmacro()\lastTokenIndex = parser\tokenIndex; - 1
+; 					Parser\xmacro()\lastLineNr = Parser\codeLineCount; - 1
+; 				EndIf
+			EndIf
+			If Parser\xmacro()\lastTokenIndex <= parser\xmacro()\firstTokenIndex
+				Debug "Macro Error"
+			EndIf
+		EndIf
+	EndIf
+EndProcedure
+
+Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
 	Protected *curToken.TOKEN = Parser\curToken
+	Protected arrSize = -1, i
+	
+	If opcode
+		Parse_WriteI(opcode, #SYM_OPCODE)
+	EndIf
+	
+	If getVarType
+		Parse_VarType(*sub)
+	EndIf
 	
 	If Parse_NextToken(#T_PERIOD) ; it's an indexed variable
 		If Parse_NextToken(#T_NUMBER)
-			Parse_SetAddressMode(Parser\paramNr, #ADR_INDX_DI)
+			Parse_SetAddressMode(paramNr, #ADR_INDX_DI)
 			Parse_WriteI(Parser\curToken\value, #SYM_INT, Parser\curToken)
 		ElseIf Parse_NextToken(#T_VARIABLE)
-			If Parse_Token(Parser\curToken, index)
-				Parse_SetAddressMode(Parser\paramNr, #ADR_INDX_IN)
+			If Parse_Token(*sub, Parser\curToken, paramNr, 0, isLocal)
+				Parse_SetAddressMode(paramNr, #ADR_INDX_IN)
 			EndIf
 		Else
 			System_Error(Parser\codeLineCount, "wrong index type")
@@ -3104,265 +2640,475 @@ Procedure Parse_Var(index)
 		EndIf
 	EndIf
 	
-	ProcedureReturn Parse_Token(*curToken, index)
-EndProcedure
-
-Procedure Parse_SkipVar()
-	If Parse_NextToken(#T_PERIOD) ; it's an indexed variable
-		If Parse_NextToken(#T_NUMBER) Or Parse_NextToken(#T_VARIABLE)
-		Else
-			System_Error(Parser\codeLineCount, "wrong index type")
-			ProcedureReturn #False
-		EndIf
-	EndIf	
-	ProcedureReturn Bool(System\state & #STATE_ERROR = 0)
-EndProcedure
-
-Procedure Parse_Param(expectedType1 = #T_UNKNOWN, expectedType2 = #T_UNKNOWN)
-	Protected type, expectedType, paramNr, result
-	
-	If Parser\curOpcode = 0
-		System_Error(Parser\codeLineCount, "Parameter without command")
-	EndIf
-	
-	For paramNr = 0 To Parser\curOpcode\nParams - 1
-		Parser\paramNr = paramNr
-		
-		If Parser\paramNr = 0
-			expectedType = expectedType1
-		ElseIf Parser\paramNr = 1
-			expectedType = expectedType2
-		EndIf
-		
-		type = expectedType
-		result = #False
-		
-		If type = #T_UNKNOWN
-			If Parse_NextToken(#T_NUMBER)
-				type = #T_NUMBER
-				result = #True
-			ElseIf Parse_NextToken(#T_VARIABLE)
-				type = #T_VARIABLE
-				result = #True
-			ElseIf Parse_NextToken(#T_LABEL)
-				type = #T_LABEL
-				result = #True
-			ElseIf Parse_NextToken(#T_FIELD)
-				type = #T_FIELD
-				result = #True
-			ElseIf Parse_NextToken(#T_SUB)
-				type = #T_SUB
-				result = #True
+	If getArray And Parse_NextToken(#T_BRACKET_OPEN)
+		If Parse_NextToken(#T_NUMBER) Or Parse_NextToken(#T_CONSTANT, #True)
+			If parser\curToken\type = #T_NUMBER
+				arrSize = Parser\curToken\value
+			ElseIf parser\curToken\type = #T_CONSTANT
+				If FindMapElement(Constant(), UCase(Parser\curToken\text))
+					arrSize = Constant()\value
+				Else
+					System_Error(Parser\codeLineCount, "Unknown constant: " + Parser\curToken\text)
+				EndIf
 			EndIf
-		ElseIf Parse_NextToken(type)
-			result = #True
-		EndIf
-		
-		If result = #True
-			If type = #T_VARIABLE
-				result = Parse_Var(Parser\paramNr)
+			If arrSize < 0
+				System_Error(Parser\curLine, "Error: negative array index")
 			Else
-				result = Parse_Token(Parser\curToken, Parser\paramNr)
+				System\ADR_Var - arrSize
+				For i = 0 To arrSize
+					Parse_WriteI(0, Parser\curVarType, #Null, System\ADR_Var + i)
+				Next
 			EndIf
-		Else
-			System_Error(Parser\codeLineCount, "Wrong parameter type: " + Str(type) + " expected: " + Str(expectedType))
 		EndIf
-	Next
+		Parse_NextToken(#T_BRACKET_CLOSE, #True)
+	EndIf
+	
+	If Parse_Token(*sub, *curToken, paramNr, 0, isLocal)
+		If arrSize >= 0
+			Parse_WriteI(arrSize, Parser\curVarType, #Null, System\ADR_Var)
+			Parser\curVar\type = #SYM_ARRAY
+		EndIf
+		ProcedureReturn #True
+	Else
+		ProcedureReturn #False
+	EndIf
+EndProcedure
+
+Procedure Parse_Param(*sub.SUB, paramNr)
+	Protected result = #False
+	Protected type = -1
+	
+	Parse_VarType(*sub)
+	
+	If Parse_NextToken(#T_NUMBER)
+		type = #T_NUMBER
+	ElseIf Parse_NextToken(#T_CONSTANT)
+		type = #T_CONSTANT
+	ElseIf Parse_NextToken(#T_VARIABLE)
+		type = #T_VARIABLE
+	ElseIf Parse_NextToken(#T_LABEL)
+		type = #T_LABEL
+	ElseIf Parse_NextToken(#T_FIELD)
+		type = #T_FIELD
+	ElseIf Parse_NextToken(#T_SUB)
+		type = #T_SUB
+	ElseIf Parse_NextToken(#T_STRING)
+		type = #T_STRING
+	Else
+		type = Parse_NextType(1)
+	EndIf
+	
+	If  type < 0
+		System_Error(Parser\codeLineCount, "Wrong parameter type: " + GetTokenName(type))
+	Else
+		If type = #T_VARIABLE
+			result = Parse_Var(*sub, #Null, paramNr, #False, #False)
+		Else
+			result = Parse_Token(*sub, Parser\curToken, paramNr)
+		EndIf
+	EndIf
 	
 	ProcedureReturn result
 EndProcedure
 
-Procedure Parse_Tokenize()	
-	Protected text.s, uText.s, varType
-	Protected regEx
-	regEx = CreateRegularExpression(#PB_Any, "('(.?)+)|" + 												; comment starting with '''
-	                                         "(" + #DOUBLEQUOTE$ + "(.?)+" + #DOUBLEQUOTE$ + ")|" +		; string "..."
-	                                         "(\r\n|\r|\n)|" +											; any newLine
-	                                         "([=<>]{2})|" +											; <> <= ... compare
-	                                         "([-]?\d+(?:\.\d+)?)|" +									; any number (int or float)
-	                                         "([$~@#!':]?[0-9A-Z_]+)|" +								; continuous text
-	                                         "[=+\-*\/\^%\.:?'(){}<>|]",								; single characters
-	                                #PB_RegularExpression_NoCase)
+Procedure Parse_SubVar(*sub.SUB, *var.VARIABLE, opcode)
+	opcode | (#ADR_INDIRECT << 8)
+	Parser\curIP = *CPU\IP
+	Parser\curVarType  = *var\type
+	Parse_WriteI(opcode, #SYM_OPCODE)
+	Parse_Token(*sub, *var\token, 0, 0, #True)
+	SETVAL(Parser\curIP, opcode)
+EndProcedure
+
+Procedure Parse_FindSub(*sub.SUB, key.s)
+	Protected *childSub.SUB
+	If *sub
+		*childSub = FindMapElement(*sub\sub(), key)
+		If *childSub = #Null
+			ProcedureReturn Parse_FindSub(*sub\parent, key)
+		EndIf
+	EndIf
+	ProcedureReturn *childSub
+EndProcedure
+
+Procedure Parse_Expression(*sub.SUB, *opcode.OPCODE, paramNr)
+	Protected *var.VARIABLE = Parser\curVar
+	Protected adrMode = Parser\curAdrMode
+	Protected varAdr = System\ADR_VarStart - paramNr
+
+	Protected *curOp.OPCODE, curParam
 	
-	If IsRegularExpression(regEx) = 0
-		MessageRequester(#AppTitle$, "Regular Expression Error: " + #NL$ + RegularExpressionError(), #PB_MessageRequester_Error)
-		ProcedureReturn #False
-	ElseIf ExamineRegularExpression(regEx, Parser\code + #CR$) = #False
-		MessageRequester(#AppTitle$, "Regular Expression Error: " + #NL$ + RegularExpressionError(), #PB_MessageRequester_Error)
-		FreeRegularExpression(regEx)
-		ProcedureReturn #False
+	If Parse_NextToken(#T_BRACKET_OPEN)
+		Parse_WriteI(#OP_PUV, #SYM_OPCODE)
+		
+		Parse_WriteI(#OP_GET | #ADR_INDIRECT << 8, #SYM_OPCODE)
+		Parse_WriteI(varAdr, #SYM_ADDRESS)
+		Parse_WriteI(0, #SYM_FLOAT, #Null, varAdr)
+		
+		While Parse_NextToken() And Parser\curToken\type <> #T_BRACKET_CLOSE
+			Protected found = 0
+			Parser\curIP = *CPU\IP
+			System\adrMode = 0
+			Select Parser\curToken\type
+				Case #T_VARIABLE
+					Parse_Var(*sub, #OP_SET, 0, #False, #False)
+				Case #T_NUMBER
+					If FindString(TokenText(Parser\curToken), ".")
+						Parse_WriteI(0, #SYM_FLOAT, #Null, varAdr)
+					EndIf
+					Parse_WriteI(#OP_SET, #SYM_OPCODE)
+					Parse_Token(*sub, Parser\curToken)
+				Case #T_CONSTANT, #T_FIELD
+					Parse_WriteI(#OP_SET, #SYM_OPCODE)
+ 					Parse_Token(*sub, Parser\curToken)
+ 				Case #T_OPCODE
+ 					*curOp = Parser\curToken\opcode
+ 					Select *curOp\ID
+ 						Case #OP_RND
+ 							Parse_WriteI(0, #SYM_FLOAT, #Null, varAdr)
+ 					EndSelect
+ 					
+					Parse_WriteI(*curOp\ID, #SYM_OPCODE)
+					For curParam = 0 To *curOp\nParams - 1
+						Parse_Param(*sub, curParam)
+					Next
+				Case #T_STRING
+					Parse_WriteI(parser\curToken, #SYM_INT)
+			EndSelect
+		Wend
+		Parse_WriteI(#OP_POV, #SYM_OPCODE)
+		
+		If paramNr < *Opcode\nParams - 1
+		;	System\ADR_Var - 1
+		Else
+			Parser\curIP = *CPU\IP
+			System\adrMode = 0
+			Parse_WriteI(*opcode\ID, #SYM_OPCODE)
+			
+			If *Opcode\nParams = 1
+				Parse_SetAddressMode(0, #ADR_INDIRECT)
+				Parse_WriteI(varAdr, #SYM_ADDRESS)
+			Else
+				Parse_SetAddressMode(0, #ADR_INDIRECT)
+				Parse_WriteI(varAdr + 1, #SYM_ADDRESS)
+				Parse_SetAddressMode(1, #ADR_INDIRECT)
+				Parse_WriteI(varAdr, #SYM_ADDRESS)
+			EndIf
+		EndIf
+	Else
+		If paramNr = 0
+			Parser\curIP = *CPU\IP
+			System\adrMode = 0
+			Parse_WriteI(*opcode\ID, #SYM_OPCODE)
+		EndIf
+		Parse_Param(*sub, paramNr)
 	EndIf
 	
-	While NextRegularExpressionMatch(regEx)
-		text = RegularExpressionMatchString(regEx)
-		uText = UCase(text)
-		
-		If Parser\tokenCount >= ArraySize(Parser\token())
-			ReDim Parser\token(Parser\tokenCount + 100)
-		EndIf
+	ProcedureReturn SYSTEM_NOERROR()
+EndProcedure
 
-		With Parser\token(Parser\tokenCount)
-			\position = RegularExpressionMatchPosition(regEx)
-			\length = RegularExpressionMatchLength(regEx)
+;-
+
+Procedure Tokenize_Comment(*c.Character)
+	Protected size = 1
+	Repeat
+		*c + SizeOf(Character)
+		If *c\c = 0 Or *c\c = 10 Or *c\c = 13
+			Break
+		EndIf
+		size + 1
+	ForEver
+	ProcedureReturn size
+EndProcedure
+
+Procedure Tokenize_String(*c.Character)
+	Protected size = 1
+	Repeat
+		*c + SizeOf(Character)
+		size + 1
+		If *c\c = 0 Or *c\c = 34
+			Break
+		EndIf
+	ForEver
+	ProcedureReturn size
+EndProcedure
+
+Procedure Tokenize_Text(*c.Character)
+	Protected size = 1
+	Repeat
+		*c + SizeOf(Character)
+		Select *c\c
+			Case 'a' To 'z', 'A' To 'Z', '_', '0' To '9'
+			Default
+				Break
+		EndSelect
+		size + 1
+	ForEver
+	ProcedureReturn size
+EndProcedure
+
+Procedure Tokenize_Number(*c.Character)
+	Protected size = 1, decPoint
+	Repeat
+		*c + SizeOf(Character)
+		Select *c\c
+			Case '0' To '9'
+			Case '.'
+				If decPoint : Break : EndIf
+				decPoint = 1
+			Default
+				Break
+		EndSelect
+		size + 1
+	ForEver
+	ProcedureReturn size
+EndProcedure
+
+Procedure Tokenize_Start()
+	Protected.Character *c, *cNext
+	Protected text.s, key.s
+	Protected pos = 1
+	Protected token.TOKEN
+	
+	*c.Character = @Parser\code
+	
+	While *c\c
+		*cNext.Character = *c + SizeOf(Character)		
+		
+		With token
 			\type = 0
-			varType = Asc(text)
+			\position = pos
+			\length = 1
+			\opcode = #Null
+			\text = ""
+			\value = 0
 			
-			Select uText
-				Case #CR$, #LF$, #NL$
+			Select *c\c
+				Case #CR
 					\type = #T_NEWLINE
-				Case "("
-					\type = #T_BRACKET_OPEN
-				Case ")"
-					\type = #T_BRACKET_CLOSE
-				Case "."
-					\type = #T_PERIOD
-				Case "|"
-					\type = #T_SEPARATOR
-				Default
-					If varType = Asc("'")
-					ElseIf varType = Asc(#DOUBLEQUOTE$)
-						\type = #T_STRING
-					ElseIf varType = '$'
-						\type = #T_SUB
-						\text = text
-					ElseIf varType = '~'
-						\type = #T_FIELD
-						\text = text
-					ElseIf varType = ':'
-						\type = #T_LABEL
-						\text = text
-					ElseIf FindMapElement(*Opcode(), uText)
+					If *cNext\c = #LF
+						\length = 2
+					EndIf
+				Case #LF
+					\type = #T_NEWLINE
+				Case Asc("'")
+					\type = #T_COMMENT
+					\length = Tokenize_Comment(*c)
+				Case Asc(#DOUBLEQUOTE$)
+					\type = #T_STRING
+					\length = Tokenize_String(*c)
+				Case '$'	
+					\type = #T_SUB
+					\length = Tokenize_Text(*c)
+					\text = PeekS(*c, \length)
+				Case '~'
+					\type = #T_FIELD
+					\length = Tokenize_Text(*c)
+					\text = PeekS(*c, \length)
+				Case ':'
+					\type = #T_LABEL
+					\length = Tokenize_Text(*c)
+					\text = PeekS(*c, \length)
+				Case '#'
+					\type = #T_CONSTANT
+					\length = Tokenize_Text(*c)
+					\text = PeekS(*c, \length)
+				Case 'a' To 'z', 'A' To 'Z', '_', '@', '!'
+					\length = Tokenize_Text(*c)
+					text = PeekS(*c, \length)
+					key = UCase(text)
+					If FindMapElement(*Opcode(), key)
 						\type = #T_OPCODE
 						\opcode = *Opcode()
-					ElseIf  FindMapElement(KeyWord(), uText)
-						\type = KeyWord()
-					ElseIf Parse_IsNumber(uText)
-						\type = #T_NUMBER
-						\value = ValD(uText)
+					ElseIf  FindMapElement(KeyWord(), key)
+						\type = KeyWord()\type
 					Else
 						\type = #T_VARIABLE
 						\text = text
 					EndIf
+				Case '-', '0' To '9'
+					\length = Tokenize_Number(*c)
+					If *c\c = '-' And \length = 1
+						\type = #T_OPCODE
+						\opcode = @Opcode(#OP_SUB)
+					Else
+						\type = #T_NUMBER
+						\value = ValD(PeekS(*c, \length))
+					EndIf
+				Case '('
+					\type = #T_BRACKET_OPEN
+				Case ')'
+					\type = #T_BRACKET_CLOSE
+				Case '.'
+					\type = #T_PERIOD
+				Case '=', '+', '-', '*', '/', '^', '%', '?', '&', '|', '<', '>'
+					\type = #T_OPCODE
+					If *c\c = '<' And *cNext\c = '<'
+						\opcode = @Opcode(#OP_SHL)
+						\length = 2
+					ElseIf *c\c = '<' And *cNext\c = '>'
+						\opcode = @Opcode(#OP_INE)
+						\length = 2
+					ElseIf *c\c = '<' And *cNext\c = '='
+						\opcode = @Opcode(#OP_ILE)
+						\length = 2
+					ElseIf *c\c = '>' And *cNext\c = '>'
+						\opcode = @Opcode(#OP_SHR)
+						\length = 2
+					ElseIf *c\c = '>' And *cNext\c = '='
+						\opcode = @Opcode(#OP_IGE)
+						\length = 2
+					ElseIf *c\c = '=' And *cNext\c = '='
+						\opcode = @Opcode(#OP_IEQ)
+						\length = 2
+					ElseIf *c\c = '&' And *cNext\c = '&'
+						\opcode = @Opcode(#OP_AND)
+						\length = 2 
+					ElseIf *c\c = '|' And *cNext\c = '|'
+						\opcode = @Opcode(#OP__OR)
+						\length = 2 
+					ElseIf *c\c = '|'
+						\type = #T_SEPARATOR
+					ElseIf FindMapElement(*Opcode(), Chr(*c\c))
+						\opcode = *Opcode()
+					Else
+						\type = 0
+					EndIf
 			EndSelect
-			
-			If \type
-				\index = Parser\tokenCount
-				Parser\tokenCount + 1
-			EndIf
-		EndWith
-	Wend
-	FreeRegularExpression(regEx)
 	
-	ReDim Parser\token(Parser\tokenCount)
+			If \type
+				CopyStructure(token, @Parser\token(parser\tokenCount), TOKEN)
+				\index = Parser\tokenCount
+				
+				Parser\tokenCount + 1
+				If Parser\tokenCount >= ArraySize(Parser\token())
+					ReDim Parser\token(Parser\tokenCount + 1000)
+				EndIf
+			EndIf
+			
+			pos + \length
+			*c + \length * SizeOf(Character)
+		EndWith	
+	Wend
+	
+	ReDim Parser\token(Parser\tokenCount + 16)
 	
 	ProcedureReturn Parser\tokenCount
 EndProcedure
 
-Procedure Parse_Start(code.s)	
-	Protected StartTime = ElapsedMilliseconds()
-	Protected refName.s
-	Protected key.s
+
+;-
+
+Procedure Parse_First(*sub.SUB, readState, depth)
+	; find subs, variables, constants
 	
-	System_Init(System\RAM_Size, System\STACK_Size)
+	Protected *token.TOKEN
+	Protected *childSub.SUB
 	
-	Parser\code = code
-	Parse_Tokenize()	
-	
-	System_RunState(RunState & ~(#STATE_END | #STATE_RUN | #STATE_ERROR))
-	*CPU\IP = 0
-	
-	Parse()
-	
-	System\programSize = *CPU\IP
-	
-	If LastElement(Parser\bracketList())
-		System_Error(Parser\bracketList()\lineNr, "missing closing bracket")
-	EndIf
-	
-	If RunState & #STATE_END = 0
-		; assign addresses for subroutines
-		ForEach Parser\reference()
-			With Parser\reference()
-				refName = TokenText(Parser\reference()\token)
-				key = UCase(refName)
+	While Parse_NextToken()
+		Parser\curLine = Parser\codeLineCount
+
+		Select Parser\curToken\type
 				
-				Select \type
-					Case #SYM_SUB
-						If FindMapElement(Parser\sub(), key) And Parser\sub()\startAdr >= 0
-							;SETVAL(\startAdr, Parser\sub()\startAdr)
-							Parse_WriteI(Parser\sub()\startAdr, #SYM_SUB, \token, \startAdr)
-						ElseIf (System\state & #STATE_ERROR) = 0
-							System_Error(\lineNr, "Sub not found: " + refName)
-						EndIf
-					Case #SYM_LABEL
-						If FindMapElement(Parser\label(), key) And Parser\label()\startAdr >= 0
-							SETVAL(\startAdr, Parser\label()\startAdr)
-;							Parse_WriteI(Parser\label()\startAdr, #SYM_LABEL, \startAdr)
-						ElseIf (System\state & #STATE_ERROR) = 0
-							System_Error(\lineNr, "Label not found: " + refName)
-						EndIf
-					Case #SYM_FIELD
-						If FindMapElement(Parser\field(), key) And Parser\field()\startAdr >= 0
-; 							SETVAL(\startAdr, Parser\field()\startAdr)
-							Parse_WriteI(Parser\field()\startAdr, #SYM_FIELD, \token, \startAdr)
-						ElseIf (System\state & #STATE_ERROR) = 0
-							System_Error(\lineNr, "Field not found: " + refName)
-						EndIf
-					Default
-						Debug "unknown reference: " + refName
-				EndSelect
-			EndWith
-		Next
-	EndIf
+			Case #T_BRACKET_CLOSE
+				
+				If readState & #READ_SUB
+					Break
+				EndIf
+			
+			Case #T_DEFINE
+				
+				If Parse_NextToken()
+					
+					Select Parser\curToken\type
+							
+						Case #T_MACRO
+							
+							Parse_Macro()
+							
+						Case #T_SUB
+							
+							If Parse_Token(*sub, Parser\curToken, 0, #True)
+								*childSub = Parser\curSub
+
+								While Parse_NextToken(#T_VARIABLE) Or Parse_VarType(*sub)
+									If Parser\curToken\type = #T_VARIABLE
+										If Parse_Var(*childSub, #Null, 0, #False, #False,#True)
+											Parser\curVar\isParam = #True
+											*childSub\nrParams + 1
+										EndIf
+									EndIf
+								Wend
+								
+								If Parse_NextToken(#T_BRACKET_OPEN, #True)
+									Parse_First(*childSub, readState | #READ_SUB, depth + 1)
+								EndIf
+							EndIf							
+							
+						Case #T_FIELD
+							
+							Parse_Token(*sub, Parser\curToken, 0, #True)
+							
+						Case #T_CONSTANT
+
+							*token = Parser\curToken
+							If Parse_NextToken(#T_NUMBER, #True)
+								Constant_Add(#SYM_CONSTANT, TokenText(*token), Parser\curToken\value)
+							EndIf
+							
+						Default
+							
+							System_Error(Parser\curLine, "Sysntax Error")
+							
+					EndSelect
+				EndIf
+				
+			Case #T_INT, #T_FLOAT, #T_CHAR
+				
+				Protected isLocal
+				If readState &  #READ_SUB
+					isLocal = #True
+				Else
+					isLocal = #False
+				EndIf
+				
+				Parser\tokenIndex - 1
+				Parse_VarType(*sub)
+				
+				If Parse_NextToken(#T_BRACKET_OPEN)
+					While Parse_NextToken(#T_VARIABLE)
+						Parse_AddVar(*sub, TokenText(Parser\curToken), Parser\curVarType, Parser\curToken, isLocal)
+					Wend
+					Parse_NextToken(#T_BRACKET_CLOSE, #True)
+				ElseIf Parse_NextToken(#T_VARIABLE, #True)
+					Parse_Var(*sub, #Null, 0, #False, #True, isLocal)
+				EndIf
+								
+		EndSelect
+	Wend
 	
-	*CPU\IP = 0
-	
-	System_Update_Label()
-	If MonitorVisible
-		System_Update_Variable(#False, #True)
-		System_Update_Monitor(0)
-	EndIf
-	
-	AddGadgetItem(#g_Error, -1, TIMESTR() + Chr(10) + "parsing finished in " + FSTR((ElapsedMilliseconds() - StartTime) / 1000.0) + " seconds") 
-	
-	StatusBarText(0, 0, "RAM: " + Str(System\RAM_Size) + " Size: " + Str(System\programSize) + " / " + Str(System\ADR_Var - System\programSize) + " free", #PB_StatusBar_Center)
-	
-	SortStructuredList(Parser\dataSect(), #PB_Sort_Ascending, OffsetOf(DATASECT\startAdr), TypeOf(DATASECT\startAdr))
-	
-; 	ForEach Parser\dataSect()
-; 		With Parser\dataSect()
-; 			Select \type
-; 				Case #SYM_LABEL : Debug "LABEL " + TokenText(\token)
-; 				Case #SYM_FIELD : Debug "FIELD " + TokenText(\token)
-; 				Case #SYM_SUB : Debug "SUB " + TokenText(\token)
-; 				Default : Debug "? " + Str(\type) + " " + TokenText(\token)
-; 			EndSelect
-; 			
-; 			Debug "Line: " + Str(\lineNr + 1)
-; 			Debug "Adr:  "  + Str(\startAdr) + " - " + Str(\endAdr) 
-; 			Debug "--------"
-; 		EndWith
-; 	Next
-	
-; 	If CreateFile(0, "output.bsm")
-; 		WriteData(0, @*CPU\RAM(0), System\programSize)
-; 		CloseFile(0)
-; 	EndIf
-	
-	ProcedureReturn Bool(System\state & #STATE_ERROR = 0)
+	ProcedureReturn SYSTEM_NOERROR()
 EndProcedure
 
-Procedure Parse(readState = 0, depth = 0)
-	Protected prevIP, elseIP, readGroup, breakLevel
-	Protected *dataSect.DATASECT
+Procedure Parse_Main(*sub.SUB, readState, depth)
+	Protected prevIP, elseIP, prevIndex, opcode, subIP, opcodeIP, readGroup, groupIndex, breakLevel
+	Protected nSubParams
+	Protected *dataSect.DATASECT, *token.TOKEN
+	Protected *parentSub.SUB, *childSub.SUB
+	Protected *curOpcode.OPCODE
 	Protected tab.s = Space(depth * 4)
 	Protected setVar.s
 	
-	While (System\state & #STATE_ERROR = 0) And Parse_NextToken()
+	If (readState & #READ_LOOP) = 0
+		ClearList(Parser\brakeList())
+	EndIf
+	
+	While Parse_NextToken()
+		
 		Parser\curLine = Parser\codeLineCount
 		
-;  		Debug  MEMSTR(Parser\curLine + 1) + MEMSTR(Parser\tokenIndex) + tab + MEMSTR(readState) + ":  " + TokenText(Parser\curToken)
-		
+;     		Debug  MEMSTR(Parser\curLine + 1) + MEMSTR(Parser\tokenIndex) + tab + MEMSTR(readState) + ":  " + TokenText(Parser\curToken) + "  tokenType: " + GetTokenName(Parser\curToken\type)
+
 		Select Parser\curToken\type
 				
 			Case 0
@@ -3370,11 +3116,9 @@ Procedure Parse(readState = 0, depth = 0)
 				Break
 				
 			Case #T_BRACKET_OPEN
-				
-				LastElement(Parser\bracketList())
-				If AddElement(Parser\bracketList())
-					Parser\bracketList()\lineNr = Parser\curLine
-				EndIf
+
+				parser\tokenIndex - 1
+				Parse_Expression(*sub, @opcode(#OP_GET), 0)
 				
 			Case #T_BRACKET_CLOSE
 				
@@ -3388,217 +3132,510 @@ Procedure Parse(readState = 0, depth = 0)
 					; exit this dataSection and return to previous one
 					Break
 				EndIf
+												
+			Case #T_DEFINE
 				
-			Case #T_VARIABLE
+				If Parse_NextToken()
+					
+					Select Parser\curToken\type
+							
+						Case #T_MACRO
+							
+							Parser\preParse = #True
+							If Parse_NextToken(#T_VARIABLE, #True)
+								If FindMapElement(Parser\xmacro(), UCase(TokenText(Parser\curToken)))
+									Parser\tokenIndex = Parser\xmacro()\lastTokenIndex
+									Parser\codeLineCount = Parser\xmacro()\lastLineNr
+									Parser\curLine = Parser\codeLineCount
+								Else
+									System_Error(Parser\curLine, "Macro not defined: " + TokenText(Parser\curToken))
+								EndIf
+							EndIf
+							Parser\preParse = #False
+							
+							
+						Case #T_SUB
+							
+							subIP = *CPU\IP + 1
+							Parse_WriteI(#OP_JMP, #SYM_OPCODE) ; a sub souldn't be reached without a call -> so jump over it
+							Parse_WriteI(0, #SYM_INT)		   ; place holder for the jump address
+							
+							If Parse_Token(*sub, Parser\curToken, 0, #True)
+								*childSub = Parser\curSub
+								*dataSect = Parser\curDataSect
+								
+								If Parse_VarType(*sub) Or Parse_NextToken(#T_VARIABLE)
+									; the sub parameters have already been parsed in the pre-parse step, so skip it here
+									While Parse_NextToken(#T_VARIABLE) Or Parse_VarType(*sub)
+									Wend
+									
+									If LastElement(*childSub\vars())
+										Repeat
+											If *childSub\vars()\isParam
+												Parse_SubVar(*childSub, *childSub\vars(), #OP_POP)
+											EndIf
+										Until PreviousElement(*childSub\vars()) = #Null
+									EndIf
+								EndIf
+								
+								If Parse_NextToken(#T_BRACKET_OPEN, #True)
+									Parse_AddBracket()
+									
+									If Parse_Main(*childSub, readState | #READ_SUB, depth + 1)
+										ForEach *childSub\ret()
+											SETVAL(*childSub\ret(), *CPU\IP)
+										Next
+										ClearList(*childSub\ret())
+										
+; 										Parse_WriteI(#OP_PUV, #SYM_OPCODE)
+										Parse_WriteI(#OP_POI, #SYM_OPCODE)
+									EndIf
+									
+									*dataSect\endAdr = *CPU\IP
+								EndIf
+							EndIf
+							
+							SETVAL(subIP, *CPU\IP)
+							
+						Case #T_FIELD
+							
+							Parse_Field(*sub)
+							
+						Case #T_CONSTANT
+							
+							Parse_NextToken()						
+							
+					EndSelect
+				EndIf
 				
-; 				If setVar And setVar = Parser\curToken\text
-;  					Debug MEMSTR(*CPU\IP) + ":  SET " + setVar + " skipped"
-;  					Parse_SkipVar()
-;  				Else
-;  					setVar = Parser\curToken\text
- 					
-					Parser\curOpcode = @Opcode(#_SET)
-					Parser\curIP = *CPU\IP
-					Parser\paramNr = 0
-					If Parse_WriteI(#_SET, #SYM_OPCODE)
-						Parse_Var(0)
-					EndIf
-; 				EndIf
+			Case #T_INT, #T_FLOAT, #T_CHAR
 				
-			Case #T_LABEL
-				
-				Parse_Token(Parser\curToken, 0, #True)
-
-			Case #T_SUB
-				
-				If Parse_Token(Parser\curToken, 0, #True)
-					*dataSect = Parser\curDataSect
+ 				If Parse_NextToken(#T_BRACKET_OPEN)
 					While Parse_NextToken(#T_VARIABLE)
-						Debug Parse_Token(Parser\curToken, -1)
 					Wend
-					;Parse_WriteI(#_RET, #SYM_OPCODE)
-					If Parse(readState | #READ_SUB, depth + 1)
-						If Parser\curOpcode = #Null Or Parser\curOpcode\ID <> #_RET
-							Parse_WriteI(#_RET, #SYM_OPCODE)
+					Parse_NextToken(#T_BRACKET_CLOSE, #True)
+				Else
+					prevIndex = parser\tokenIndex
+					If Parse_NextToken(#T_VARIABLE)
+						If Parse_NextToken(#T_BRACKET_OPEN)
+							Parse_NextToken()
+							Parse_NextToken(#T_BRACKET_CLOSE, #True)
+						Else
+							parser\tokenIndex = prevIndex
 						EndIf
-					EndIf
-					If *dataSect
-						*dataSect\endAdr = *CPU\IP
 					EndIf
 				EndIf
 				
-			Case #T_FIELD
+			Case #T_VARIABLE
 				
-					Parse_Field()
+				Parser\curIP = *CPU\IP
+				Parse_Var(*sub, #OP_GET, 0, #True, #False)
+				
+			Case #T_LABEL
+				
+				Parse_Token(*sub, Parser\curToken, 0, #True)
+				
+			Case #T_SUB ;- CALL SUB
+				
+				If readState & #READ_LOOP
+					; if call from inside loop -> save the loop registers
+					Parse_WriteI(#OP_PUC, #SYM_OPCODE)
+					Parse_WriteI(#OP_PUX, #SYM_OPCODE)
+				EndIf
+				
+				*childSub = Parse_FindSub(*sub, UCase(TokenText(Parser\curToken)))
+				If *childSub = #Null
+					System_Error(Parser\curLine, "Sub not defined: '" + TokenText(Parser\curToken) + "'")
+				Else
+					*token = Parser\curToken
+					nSubParams = 0
+					
+					If (*sub = *childSub) And (readState & #READ_SUB)
+						; if recursive call - > save current variables
+						ForEach *childSub\vars()
+							Parse_SubVar(*childSub, *childSub\vars(), #OP_PSH)
+						Next
+					EndIf
+					
+					Parse_WriteI(#OP_PSH, #SYM_OPCODE) ; push current IP
+					Parse_WriteI(0, #SYM_INT)
+					prevIP = *CPU\IP - 1 ; placeholder for return address 
+					
+					nSubParams = *childSub\nrParams
+					While nSubParams And Parse_NextToken()
+						Parser\curIP = *CPU\IP
+						Parser\curAdrMode = 0
+						
+						If Parser\curToken\type = #T_VARIABLE
+							Parse_Var(*sub, #OP_PSH, 0, #True, #False)
+						Else
+							Parse_WriteI(#OP_PSH, #SYM_OPCODE)
+							Parse_Token(*sub, Parser\curToken)
+						EndIf
+						
+						nSubParams - 1
+					Wend
+					
+					If nSubParams > 0
+						System_Error(Parser\curLine, "Missing parameter")
+					ElseIf nSubParams < 0
+						System_Error(Parser\curLine, "Too many parameters")
+					Else
+						
+						;Parse_WriteI(#OP_CAL, #SYM_OPCODE)
+						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+						Parse_Token(*sub, *token)
+						
+						SETVAL(prevIP,  *CPU\IP) ; write return address
+						
+						If (*sub = *childSub) And (readState & #READ_SUB)
+							; if recursive call - > restore current variables
+							If LastElement(*childSub\vars())
+								Repeat
+									Parse_SubVar(*childSub, *childSub\vars(), #OP_POP)
+								Until PreviousElement(*childSub\vars()) = #Null
+							EndIf
+						EndIf
+						
+						If readState & #READ_LOOP
+							; if call from inside loop -> restore the loop registers
+							Parse_WriteI(#OP_POX, #SYM_OPCODE)
+							Parse_WriteI(#OP_POC, #SYM_OPCODE)
+						EndIf
+						
+					EndIf
+				EndIf
+				
+			Case #T_RETURN
+				
+				If readState & #READ_SUB
+					If Parse_NextToken(#T_BRACKET_OPEN)
+						Parser\curIP = *CPU\IP
+						Parse_WriteI(#OP_GET, #SYM_OPCODE)
+						Parse_Param(*sub, 0)
+						Parse_NextToken(#T_BRACKET_CLOSE, #True)
+					EndIf
+					
+					Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+					Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS) ; place holder for exit address
+					AddElement(*sub\ret())
+					*sub\ret()= *CPU\IP - 1
+				Else
+					System_Error(Parser\curLine, "Return without Call")
+				EndIf
 								
 			Case #T_BREAK
 				
 				If readState & #READ_LOOP
 					If AddElement(Parser\brakeList())
 						If Parse_NextToken(#T_NUMBER)
-							Parser\brakeList()\data = Parser\curToken\value
+							If Parser\curToken\value > Parser\loopDepth
+								System_Error(parser\curLine, "the breaklevel exceeds the loop count")
+							Else
+								Parser\brakeList()\data = Parser\curToken\value
+							EndIf
 						EndIf
-						Parse_WriteI(#_JMP, #SYM_OPCODE)
-						Parse_WriteI(0, #SYM_ADDRESS)
+						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+						Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS) ; placeholder for the exit address
 						Parser\brakeList()\adr = *CPU\IP - 1
 					EndIf
 				Else
 					System_Error(Parser\curLine, "Break without Loop")
 				EndIf
 				
- 			Case #T_ELSE
- 				
+			Case #T_ELSE
+				
  				System_Error(Parser\curLine, "Else without If")
  				
  			Case #T_SOUND
- 				
- 				If Parse_NextToken(#T_VARIABLE, #True)
- 					If Parse_AddVar(TokenText(Parser\curToken), Parser\curToken)
- 						If Parse_NextToken(#T_STRING, #True)
- 							If SoundSystemOK
- 								If FindMapElement(System\Sound(), TokenText(Parser\curToken))
- 									SETVAL(Parser\curVar\adr, System\Sound())
- 								Else
- 									AddMapElement(System\sound(), TokenText(Parser\curToken))
- 									System\sound() = LoadSound(#PB_Any, GetPathPart(*CurrentFile\path) + Trim(TokenText(Parser\curToken), #DOUBLEQUOTE$))
- 									If IsSound(System\sound())
- 										SETVAL(Parser\curVar\adr, System\sound())
- 									EndIf
+ 	
+ 				If Parse_NextToken(#T_BRACKET_OPEN, #True)
+ 					While Parse_NextToken(#T_VARIABLE)
+ 						If Parse_AddVar(*sub, TokenText(Parser\curToken), #SYM_INT, Parser\curToken)
+ 							If Parse_NextToken(#T_STRING, #True)
+ 								If SoundSystemOK
+ 									Parse_AddSound(Parser\curVar, GetPathPart(*CurrentFile\path) + Trim(TokenText(Parser\curToken), #DOUBLEQUOTE$))
  								EndIf
  							EndIf
  						EndIf
- 					EndIf
+ 					Wend
+ 					Parse_NextToken(#T_BRACKET_CLOSE, #True)
  				EndIf
  				
 			Case #T_OPCODE
 				
-				Protected groupIndex = 0
-				Protected curOpIP = *CPU\IP
-				Protected *curOpcode.OPCODE = Parser\curToken\opcode
+				opcodeIP = *CPU\IP
+				*curOpcode = Parser\curToken\opcode
 				Parser\curOpcode = *curOpcode
+				Parser\curIP = *CPU\IP
+				System\adrMode = 0
 				
-				readGroup = Parse_NextToken(#T_BRACKET_OPEN)
-				
-				Repeat
-					
-					If (readState & #READ_LOOP) And *curOpcode\ID = #_STP
-						Parse_WriteI(#_PSC, #SYM_OPCODE) ; push current loop state on the stack (for nested loops)
-					EndIf
-					
-					Parser\curIP = *CPU\IP
-					Parser\paramNr = 0	
-					System\adrMode = 0
-					
-					Parse_WriteI(*curOpcode\ID, #SYM_OPCODE)
-;  					Debug "    cur. opcode: " + Parser\curOpcode\name + " groupindex " + Str(groupIndex)
-					groupIndex + 1
-					
-					Select *curOpcode\ID
-						Case #_SET: Parse_Param()
-						Case #_MOV: Parse_Param()
-						Case #_WRT: Parse_Param()
-						Case #_INT, #_CIL, #_NEG, #_ABS, #_RND, #_SGN
-						Case #_ADD, #_SUB, #_MUL, #_DIV, #_MOD, #_POW, #_NTH: Parse_Param()
-						Case #_MIN, #_MAX: Parse_Param()
-						Case #_JMP: Parse_Param()
-						Case #_JMF: Parse_Param()
-						Case #_STP: Parse_Param()
-						Case #_TO
-							
-							If Parse_Param() 
-								*dataSect = Parser\curDataSect
-								prevIP = *CPU\IP
-								If Parse_WriteI(0, #SYM_ADDRESS) ; placeholder for the "exit address"
-									If Parse(readState | #READ_LOOP, depth + 1)
-										Parse_WriteI(#_JMP, #SYM_OPCODE)
-										Parse_WriteI(curOpIP, #SYM_ADDRESS)
+				Select *curOpcode\ID
+						
+					Case #OP_STP
+						
+						If (readState & #READ_LOOP)
+							Parse_WriteI(#OP_PUC, #SYM_OPCODE) ; push current loop state on the stack (for nested loops)
+							Parse_WriteI(#OP_PUX, #SYM_OPCODE) ; push current loop state on the stack (for nested loops)
+						EndIf
+						Parse_Expression(*sub, *curOpcode, 0)
+						
+					Case #OP_TO
+						
+						If Parse_Expression(*sub, *curOpcode, 0)
+							*dataSect = Parser\curDataSect
+							prevIP = *CPU\IP
+							If Parse_WriteI(0, #SYM_ADDRESS) ; placeholder for the "exit address"
+								
+								If Parse_NextToken(#T_BRACKET_OPEN, #True)
+									Parse_AddBracket()
+									
+									Parser\loopDepth + 1
+									If Parse_Main(*sub, readState | #READ_LOOP, depth + 1)
+										Parser\loopDepth - 1
+										
+										Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+										Parse_WriteI(opcodeIP, #SYM_ADDRESS)
 										ForEach Parser\brakeList()
 											SETVAL(Parser\brakeList()\adr, *CPU\IP)
 										Next
 										SETVAL(prevIP, *CPU\IP)
 										If readState & #READ_LOOP
-											Parse_WriteI(#_POC, #SYM_OPCODE) ; pop previous loop state from  the stack (for nested loops)
+											Parse_WriteI(#OP_POX, #SYM_OPCODE) ; pop previous loop state from
+											Parse_WriteI(#OP_POC, #SYM_OPCODE) ; the stack (for nested loops)
 										EndIf
 										
-										ClearList(Parser\brakeList())
+										ForEach Parser\brakeList()
+											Parser\brakeList()\data - 1
+											If Parser\brakeList()\data <= 0
+												DeleteElement(Parser\brakeList())
+											EndIf
+										Next
 									EndIf
 								EndIf
-								If *dataSect
-									*dataSect\endAdr = *CPU\IP
+							EndIf
+							If *dataSect
+								*dataSect\endAdr = *CPU\IP
+							EndIf
+						EndIf
+						
+					Case #OP_IFL, #OP_ILO, #OP_IGR, #OP_ILE, #OP_IGE, #OP_IEQ, #OP_INE
+						
+						If Parse_Expression(*sub, *curOpcode, 0)
+							*dataSect = Parser\curDataSect
+							
+							prevIP = *CPU\IP
+							Parse_WriteI(0, #SYM_ADDRESS)
+							
+							Protected NewList ExitAdr()
+							Protected addIp = 0
+							
+							If Parse_NextToken(#T_BRACKET_OPEN, #True)
+								Parse_AddBracket()
+								If Parse_Main(*sub, readState | #READ_IF, depth + 1)
+									If Parse_NextToken(#T_ELSE)
+										SETVAL(prevIP, *CPU\IP + 2)
+										Repeat
+											If Parse_NextToken(#T_BRACKET_OPEN, #True)
+												Parse_AddBracket()
+												Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+												Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS)
+												AddElement(ExitAdr())
+												ExitAdr() = *CPU\IP - 1
+												Parse_Main(*sub, readState | #READ_ELSE, depth + 1)
+											EndIf
+										Until Parse_NextToken(#T_ELSE) = 0
+									EndIf
+									If Parse_NextType(1, #T_ELSE) >= 0
+										SETVAL(prevIP, *CPU\IP + 2)
+									ElseIf ListSize(ExitAdr()) = 0
+										SETVAL(prevIP, *CPU\IP)
+									EndIf
 								EndIf
 							EndIf
 							
-						Case #_IFL, #_ILO, #_IGR, #_ILE, #_IGE, #_IEQ, #_INE
+							ForEach ExitAdr()
+								SETVAL(ExitAdr(), *CPU\IP)
+							Next
+							ClearList(ExitAdr())
 							
-							If Parse_Param()
-								*dataSect = Parser\curDataSect
-								
-								prevIP = *CPU\IP
- 								Parse_WriteI(0, #SYM_ADDRESS)
- 								
- 								Protected NewList ExitAdr()
- 								Protected addIp = 0
- 								
- 								If Parse(readState | #READ_IF, depth + 1)
- 									If Parse_NextToken(#T_ELSE)
- 										SETVAL(prevIP, *CPU\IP + 2)
- 										Repeat
- 											Parse_WriteI(#_JMP, #SYM_OPCODE)
- 											Parse_WriteI(0, #SYM_ADDRESS)
- 											AddElement(ExitAdr())
- 											ExitAdr() = *CPU\IP - 1
- 											Parse(readState | #READ_ELSE, depth + 1)
- 										Until Parse_NextToken(#T_ELSE) = 0
- 									EndIf
- 									If Parse_NextType(1, #T_ELSE) >= 0
- 										SETVAL(prevIP, *CPU\IP + 2)
- 									ElseIf ListSize(ExitAdr()) = 0
-  										SETVAL(prevIP, *CPU\IP)
- 									EndIf
-								EndIf
-
-								ForEach ExitAdr()
-									SETVAL(ExitAdr(), *CPU\IP)
-								Next
-								ClearList(ExitAdr())
-								
-								If *dataSect
-									*dataSect\endAdr = *CPU\IP
-								EndIf
+							If *dataSect
+								*dataSect\endAdr = *CPU\IP
 							EndIf
+						EndIf
+						
+					Case #OP_DBG
+						
+						If Parse_NextToken(#T_STRING, #True)
+							Parser\curIP = *CPU\IP
+							System\adrMode = 0
 							
-						Case #_PSH, #_POP: Parse_Param()
-						Case #_PSF, #_POF, #_PSC, #_POC
-						Case #_CAL: Parse_Param(#T_SUB)
-						Case #_RET
-						Case #_CHM, #_CHS, #_CHR, #_CXY: Parse_Param()
-						Case #_CLF, #_CLB: Parse_Param()
-						Case #_PLT: Parse_Param()
-						Case #_SCR: Parse_Param()
-						Case #_DRW
-						Case #_CLS: Parse_Param()
-						Case #_INP
-						Case #_KEY: Parse_Param()
-						Case #_SNP, #_SNS: Parse_Param()
-						Case #_DLY: Parse_Param()
-						Case #_DBG: Parse_Param()
-						Case #_HLT, #_KIL, #_END
-						Default 
-							System_Error(Parser\curLine, "Unknown Opcode: " + *curOpcode\name)
-					EndSelect
+							Parse_WriteI(*curOpcode\ID, #SYM_OPCODE)
+							Parser\tokenIndex - 1
+							Parse_Param(*sub, 0)
+							Parse_Param(*sub, 1)
+						EndIf
+						
+					Default ;- OPCODE
+						
+						Parser\curIP = *CPU\IP
+						System\adrMode = 0
 
-				Until (readGroup = 0) Or (System\state & #STATE_ERROR) Or Parse_NextToken(#T_BRACKET_CLOSE)
-				
-				Parser\curOpcode = 0
+						If *curOpcode\nParams = 0
+							Parse_WriteI(*curOpcode\ID, #SYM_OPCODE)
+						ElseIf *curOpcode\nParams = 1
+							Parse_Expression(*sub, *curOpcode, 0)
+						Else
+							Parse_Expression(*sub, *curOpcode, 0)
+							Parse_Expression(*sub, *curOpcode, 1)
+						EndIf
+						
+				EndSelect
 				
 			Default
 				
-				System_Error(Parser\curLine, "Unknown Tokentype: " + Str(Parser\curToken\type))
+				System_Error(Parser\curLine, "Unexpected Tokentype: " + GetTokenName(Parser\curToken\type))
 				
 		EndSelect
 	Wend
 	
-	ProcedureReturn Bool(System\state & #STATE_ERROR = 0)
+	ProcedureReturn SYSTEM_NOERROR()
+EndProcedure
+
+Procedure Parse_Start(*file.FILE, parseFull = #True)
+	Protected StartTime = ElapsedMilliseconds()
+	Protected refName.s
+	Protected key.s
+	
+	If *file = #Null
+		ProcedureReturn #False
+	EndIf
+	
+	ClearStructure(Parser, PARSER)
+	InitializeStructure(Parser, PARSER)	
+	
+	System_Init(RamSize, StackSize)
+	System_RunState(RunState & ~(#STATE_END | #STATE_RUN | #STATE_ERROR))
+	*CPU\IP = 0
+	
+	; PRE PARSE STEP
+	With Parser
+		Parser\preParse = #True
+		Parser\code = Scintilla_GetText(*file\editor)
+		Tokenize_Start()
+		Parse_First(\main, 0, 0)
+	EndWith
+
+	If parseFull
+		; MAIN PARSE STEP
+		System_RunState(RunState & ~(#STATE_END | #STATE_RUN | #STATE_ERROR))
+		*CPU\IP = 0
+		
+		With Parser
+			\preParse = #False
+			\tokenIndex = 0
+			\codeLineCount = 0
+			\curToken = #Null
+			
+			ClearMap(\label())
+			ClearList(\reference())
+			ClearList(\brakeList())
+			ClearList(\bracketList())
+			
+			Parse_Main(\main, 0, 0)
+		EndWith
+		
+		System\programSize = *CPU\IP
+		
+		If LastElement(Parser\bracketList())
+			System_Error(Parser\bracketList()\lineNr, "missing closing bracket")
+		EndIf
+		
+		If RunState & #STATE_END = 0
+			; assign addresses for subroutines
+			ForEach Parser\reference()
+				Protected found = #False
+				With Parser\reference()
+					refName = TokenText(Parser\reference()\token)
+					key = UCase(refName)
+					
+					If \isSub
+						; 1) local search
+						If FindMapElement(\sub\sub(), key) And \sub\sub()\dataSect\startAdr >= 0
+							Parse_WriteI(\sub\sub()\dataSect\startAdr, #SYM_SUB, \token, \startAdr)
+							; 2) global search
+						ElseIf FindMapElement(Parser\main\sub(), key) And Parser\main\sub()\dataSect\startAdr >= 0
+							Parse_WriteI(Parser\main\sub()\dataSect\startAdr, #SYM_SUB, \token, \startAdr)
+						ElseIf SYSTEM_HASERROR()
+							System_Error(\lineNr, "Sub not defined: " + refName)
+						EndIf
+						found = #True
+					EndIf
+					If \isLabel
+						If FindMapElement(Parser\label(), key) And Parser\label()\startAdr >= 0
+							SETVAL(\startAdr, Parser\label()\startAdr)
+						ElseIf SYSTEM_HASERROR()
+							System_Error(\lineNr, "Label not found: " + refName)
+						EndIf
+						found = #True
+					EndIf
+					If \isField
+						If FindMapElement(Parser\field(), key) And Parser\field()\startAdr >= 0
+							Parse_WriteI(Parser\field()\startAdr, #SYM_FIELD, \token, \startAdr)
+						ElseIf SYSTEM_HASERROR()
+							System_Error(\lineNr, "Field not defined: " + refName)
+						EndIf
+						found = #True
+					EndIf
+					
+					If found = #False
+						Debug "unknown reference: " + refName
+					EndIf
+				EndWith
+			Next
+		EndIf
+	EndIf
+	
+	*CPU\IP = 0
+	
+	System_Update_SubList()
+	If MonitorVisible
+		System_Update_VarList(Parser\main, #False, #True)
+		System_Update_Monitor(*CPU\IP)
+	EndIf
+	
+	AddGadgetItem(#g_Error, -1, TIMESTR() + "   parsing finished in " + FSTR((ElapsedMilliseconds() - StartTime) / 1000.0) + " seconds") 
+	
+	StatusBarText(0, 0, "RAM: " + Str(System\RAM_Size) + " Size: " + Str(System\programSize) + " / " + Str(System\ADR_Var - System\programSize) + " free", #PB_StatusBar_Center)
+	
+	SortStructuredList(Parser\dataSect(), #PB_Sort_Ascending, OffsetOf(DATASECT\startAdr), TypeOf(DATASECT\startAdr))
+	
+; 	ForEach Parser\dataSect()
+; 		With Parser\dataSect()
+; 			If \isSub
+; 				Debug "SUB " + TokenText(\token)
+; 			EndIf
+; 			If \isField
+; 				Debug "FIELD " + TokenText(\token)
+; 			EndIf
+; 			If \isLabel
+; 				Debug "LABEL " + TokenText(\token)
+; 			EndIf
+; ; 				Default : Debug "? " + Str(\type) + " " + TokenText(\token)
+; ; 			EndSelect
+; 			
+; 			Debug "Line: " + Str(\lineNr + 1)
+; 			Debug "Adr:  "  + Str(\startAdr) + " - " + Str(\endAdr) 
+; 			Debug "--------"
+; 		EndWith
+; 	Next
+	
+; 	If CreateFile(0, "output.bsm")
+; 		WriteData(0, @*CPU\RAM(0), System\programSize)
+; 		CloseFile(0)
+; 	EndIf
+	
+	ProcedureReturn SYSTEM_NOERROR()
 EndProcedure
 
 ;-
@@ -3610,23 +3647,32 @@ Procedure Event_Menu()
 		Case #m_Quit
 			System_Quit()
 		Case #m_New
-			File_Open("", #True)
+			File_Open("", #True, #True)
 		Case #m_Open
-			File_Open("")
+			If File_Open("", #False, #True)
+				File_UpdateIni()
+			EndIf
 		Case #m_Save
-			File_Save(*CurrentFile)
+			If File_Save(*CurrentFile)
+				File_UpdateIni()
+			EndIf
 		Case #m_SaveAs
-			File_Save(*CurrentFile, #True)
+			If File_Save(*CurrentFile, #True)
+				File_UpdateIni()
+			EndIf
 		Case #m_Close
-			File_Close(*CurrentFile)
+			If File_Close(*CurrentFile)
+				File_UpdateIni()
+				System_Parse(*CurrentFile, #False)
+			EndIf
 		Case #m_Undo
 			Scintilla_Undo(*CurrentFile\editor)
 		Case #m_Redo
 			Scintilla_Redo(*CurrentFile\editor)
 		Case #m_Parse
-			System_Parse(*CurrentFile, #False)
+			System_Parse(*CurrentFile, #True, #False)
 		Case #m_ParseRun
-			System_Parse(*CurrentFile, #True)
+			System_Parse(*CurrentFile, #True, #True)
 		Case #m_Run 
 			If (RunState & #STATE_ERROR) = 0
 				If RunState & #STATE_STEP
@@ -3651,16 +3697,42 @@ Procedure Event_Menu()
 				EndIf
 			EndIf
 		Case #m_Monitor
-			System_Update_Monitor(0)
+			System_Update_VarList(Parser\main, #False, #True)
+			System_Update_Monitor(*CPU\IP)
 			HideWindow(#w_Monitor, 0)
 			MonitorVisible = #True
+		Case #m_MonitorUp
+			*CPU\IP = MAX(*CPU\IP - 1, 0)
+			System_Update_Monitor(*CPU\IP, -1)
+		Case #m_MonitorDown
+			*CPU\IP = MIN(*CPU\IP + 1, System\programSize - 1)
+			System_Update_Monitor(*CPU\IP, 1)
+		Case #m_CopyMonitor
+			Protected i, lastI, text.s
+			For lastI = CountGadgetItems(#g_Monitor) - 1 To 0 Step - 1
+				If Trim(GetGadgetItemText(#g_Monitor, lastI, 4))
+					For i = 0 To lastI
+; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 0), 12)
+; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 1), 5)
+; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 2), 5)
+; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 3), 5)
+						text + GetGadgetItemText(#g_Monitor, i, 4) + #NL$
+					Next
+					Break
+				EndIf
+			Next
+			SetClipboardText(text)
 		Case #m_Help
 			System_Help()
 		Case #m_SearchSel
 			If *CurrentFile
 				SetGadgetText(#g_SearchText, Scintilla_GetSelText(*CurrentFile\editor))
 				Scintilla_SearchStart(*CurrentFile\editor, GetGadgetText(#g_SearchText))
-				;			SetActiveGadget(#g_SearchText)
+				If GetGadgetText(#g_SearchText) = ""
+					SetActiveGadget(#g_SearchText)
+				Else
+					SetActiveGadget(*CurrentFile\editor)
+				EndIf
 			EndIf
 		Case #m_SearchCase, #m_SearchWhole, #m_SearchRegEx
 			SetMenuItemState(#m_SearchPopup, EventMenu(), Bool(GetMenuItemState(#m_SearchPopup, EventMenu()) = 0))
@@ -3691,9 +3763,6 @@ Procedure Event_Menu()
 			If *CurrentFile
 				Scintilla_BlockComment(*CurrentFile\editor, Asc("'"), #True)
 			EndIf
-		Case #m_ExportC
-			System_ToC("_compiler\output.c")
-; 			System_ToC(SaveFileRequester(#AppTitle$, "", "*.c|*.c", 1))
 	EndSelect
 EndProcedure
 
@@ -3702,7 +3771,9 @@ Procedure Event_Gadget()
 		Case #PB_Event_Gadget
 			Select EventGadget()
 				Case #g_FilePanel
-					File_Activate(GetGadgetItemData(#g_FilePanel, GetGadgetState(#g_FilePanel)))
+					If EventType() = #PB_EventType_Change
+						File_Activate(GetGadgetItemData(#g_FilePanel, GetGadgetState(#g_FilePanel)), -1, #True)
+					EndIf
 				Case #g_Error, #g_Monitor
 					If EventType() = #PB_EventType_LeftDoubleClick
 						System_GotoLine(GetGadgetItemData(EventGadget(), GetGadgetState(EventGadget())))
@@ -3712,6 +3783,8 @@ Procedure Event_Gadget()
 					If EventType() = #PB_EventType_LeftDoubleClick
 						System_Variable_Change(GetGadgetItemData(#g_Variables, GetGadgetState(#g_Variables)))
 					EndIf
+				Case #g_VarSort
+					System_Update_VarList(Parser\main, #False, #True)
 				Case #g_Sub
 					If EventType() = #PB_EventType_LeftDoubleClick
 						System_GotoLine(GetGadgetItemData(#g_Sub, GetGadgetState(#g_Sub)))
@@ -3729,8 +3802,10 @@ Procedure Event_Gadget()
 					PostEvent(#PB_Event_Menu, #w_Main, #m_SearchPrev)
 				Case #g_SearchNext
 					PostEvent(#PB_Event_Menu, #w_Main, #m_SearchNext)
-				Case #g_SplitterEditorV
+				Case #g_SplitterEditorH, #g_SplitterEditorV
 					PostEvent(#PB_Event_SizeWindow, #w_Main, 0)
+				Case #g_SplitterMonitor
+					PostEvent(#PB_Event_SizeWindow, #w_Monitor, 0)
 			EndSelect
 	EndSelect
 EndProcedure
@@ -3777,6 +3852,11 @@ Procedure Event_Window()
 				Case #w_Monitor
 					y = ToolBarHeight(#t_Monitor)
 					ResizeGadget(#g_SplitterMonitor, 0, y, WindowWidth(#w_Monitor), WindowHeight(#w_Monitor) - y)
+					x = GadgetWidth(#g_VarContainer) - 10
+					ResizeGadget(#g_VarSort, 5, 5, x, 25)
+					ResizeGadget(#g_Variables, 5, 30, x, GadgetHeight(#g_SplitterMonitor) - 35)
+				Case #w_Debug
+					ResizeGadget(#g_Debug, 0, 0, WindowWidth(#w_Debug), WindowHeight(#w_Debug))
 				Case #w_Help
 					ResizeGadget(#g_Help, 5, 5, WindowWidth(#w_Help) - 10, WindowHeight(#w_Help) - 10)
 			EndSelect
@@ -3786,15 +3866,19 @@ EndProcedure
 DisableExplicit
 
 IDE_Init()
-System_Start(16320, 256)
+System_Start(64000, 255)
 
 Repeat
+	
 	If (RunState & #STATE_RUN) And (RunState & #STATE_PAUSE) = 0
+		
 		Counter + 1
+		
 		If (Counter > 250) Or (RunState & (#STATE_PAUSE))
-				Counter = 0
+			Counter = 0
 			event = WindowEvent()
 		EndIf
+		
 		If event = 0
 			System\time = ElapsedMilliseconds() - System\startTime
 			SETVAL(System\ADR_Time, System\time)
@@ -3804,19 +3888,552 @@ Repeat
 			VarAddIP = 0
 			mem = *CPU\RAM(*CPU\IP)
 			opcode = mem & $FF
-			System\adrMode = (mem >> 8) & $FF
-			
+			System\adrMode = (mem >> 8) & $FF		
 			System\nextIP = *CPU\IP + 1
-			CallFunctionFast(Opcode(opcode)\procAddress)
+
+			Select opcode ;- RUN
+				Case #OP_GET
+					; variable to V-Register
+					GETVAL_WRITE(System\nextIP, *CPU\V)
+				Case #OP_SET
+					; value to variable in V-Register
+					GETVAL_READ(System\nextIP, valF1)
+					SETVAL(*CPU\V, valF1)
+				Case #OP_ADD
+					MATH_F(+)
+				Case #OP_SUB
+					MATH_F(-)
+				Case #OP_MUL
+					MATH_F(*)
+				Case #OP_DIV
+					GETVAL(*CPU\V, valF1)
+					GETVAL_READ(System\nextIP, valF2)
+					If valF2 = 0
+						System_Error(System_LineNrByIP(*CPU\IP), "Division by zero")
+					Else
+						valF1 / valF2
+						SETVAL(*CPU\V, valF1)
+					EndIf
+				Case #OP_SQR
+					GETVAL(*CPU\V, valF1)
+					If valF1 < 0
+						System_Error(System_LineNrByIP(*CPU\IP), "Square root of negative number")
+					Else
+						SETVAL(*CPU\V, Sqr(valF1))
+					EndIf
+				Case #OP_POW
+					GETVAL(*CPU\V, valF1)
+					GETVAL_READ(System\nextIP, valF2)
+					SETVAL(*CPU\V, Pow(valF1, valF2))
+				Case #OP_SHL
+					MATH_I(<<)
+				Case #OP_SHR
+					MATH_I(>>)
+				Case #OP_AND
+					MATH_I(&)
+				Case #OP__OR
+					MATH_I(|)
+				Case #OP_MOD
+					MATH_I(%)
+				Case #OP_NEG
+					GETVAL(*CPU\V, valF1)
+					SETVAL(*CPU\V, -valF1)
+				Case #OP_INT
+					GETVAL(*CPU\V, valI1)
+					SETVAL(*CPU\V, valI1)
+				Case #OP_NTH
+					GETVAL(*CPU\V, valI1)
+					valS = Str(valI1)
+					GETVAL_READ(System\nextIP, valI2)
+					valI1 = Len(valS)
+					If valI2 >= valI1
+						SETVAL(*CPU\V, 0)
+					Else
+						SETVAL(*CPU\V, Val(Mid(valS, valI1 - valI2, 1)))
+					EndIf
+				Case #OP_SGN
+					GETVAL(*CPU\V, valF1)
+					SETVAL(*CPU\V, Sign(valF1))
+				Case #OP_CIL
+					GETVAL(*CPU\V, valF1)
+					*CPU\RAM(*CPU\V) = Round(valF1, #PB_Round_Up)
+				Case #OP_ABS
+					GETVAL(*CPU\V, valF1)
+					SETVAL(*CPU\V, Abs(valF1))
+				Case #OP_MIN
+					GETVAL(*CPU\V, valF1)
+					GETVAL_READ(System\nextIP, valF2)
+					If valF1 < valF2
+						SETVAL(*CPU\V, valF2)
+						*CPU\FLAGS = 1
+					Else
+						*CPU\FLAGS = 0
+					EndIf
+				Case #OP_MAX
+					GETVAL(*CPU\V, valF1)
+					GETVAL_READ(System\nextIP, valF2)
+					If valF1 > valF2
+						SETVAL(*CPU\V, valF2)
+						*CPU\FLAGS = 1
+					Else
+						*CPU\FLAGS = 0
+					EndIf
+				Case #OP_RSD
+					GETVAL_READ(System\nextIP, valI1)
+					RandomSeed(valI1)
+				Case #OP_RND
+					SETVAL(*CPU\V, Random(10000000) / 10000000.0)
+				Case #OP_IFL
+					GETVAL_READ(System\nextIP, valI1)
+					If *CPU\FLAGS = valI1
+						System\nextIP + 1
+					Else
+						GETVAL(System\nextIP, System\nextIP)
+					EndIf
+				Case #OP_IGR
+					COMPARE(>, #FLAG_GREATER, #FLAG_LOWER | #FLAG_EQUAL)
+				Case #OP_ILO
+					COMPARE(<, #FLAG_LOWER, #FLAG_GREATER | #FLAG_EQUAL)
+				Case #OP_IEQ
+					COMPARE(=, #FLAG_EQUAL, #FLAG_NOTEQUAL)
+				Case #OP_IGE
+					COMPARE(>=, #FLAG_GREATER | #FLAG_EQUAL, #FLAG_LOWER)
+				Case #OP_ILE
+					COMPARE(<=, #FLAG_LOWER | #FLAG_EQUAL, #FLAG_GREATER)
+				Case #OP_INE
+					COMPARE(<>, #FLAG_NOTEQUAL, #FLAG_EQUAL)
+				Case #OP_JMF
+					GETVAL_READ(System\nextIP, valF1)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, valF2)
+					If *CPU\FLAGS = valF1
+						System\nextIP = valF2
+					EndIf
+				Case #OP_STP
+					*CPU\X = *CPU\V
+					GETVAL_READ(System\nextIP, *CPU\C)
+					ValF1 = *CPU\RAM(*CPU\X)
+					SETVAL(*CPU\X, valF1 - *CPU\C)
+				Case #OP_TO
+					GETVAL(*CPU\X, valF1)
+					GETVAL_READ(System\nextIP, valF2)
+					
+					If *CPU\C < 0 And (valF1 + *CPU\C) < valF2
+						GETVAL(System\nextIP, System\nextIP)
+					ElseIf *CPU\C > 0 And (valF1 + *CPU\C) > valF2
+						GETVAL(System\nextIP, System\nextIP)
+					Else
+						valF1 + *CPU\C
+						SETVAL(*CPU\X, valF1)
+						System\nextIP + 1
+					EndIf
+				Case #OP_JMP
+					GETVAL_READ(System\nextIP, valI1)
+					System\nextIP = valI1
+				Case #OP_PSH
+					; push value
+					GETVAL_READ(System\nextIP, valF1)
+					PUSH(valF1)
+				Case #OP_POP
+					; pop value
+					GETVAL_WRITE(System\nextIP, valAdr)
+					POP(valF1)
+					SETVAL(valAdr, valF1)
+				Case #OP_PUI
+					; push instruction pointer
+					Push(System\nextIP)
+				Case #OP_POI
+					; pop instruction pointer
+					POP(System\nextIP)
+				Case #OP_PUS
+					; push stack pointer
+					Push(*CPU\SP)
+				Case #OP_POS
+					; pop stack pointer
+					POP(*CPU\SP)
+				Case #OP_PUF
+					; push flags
+					PUSH(*CPU\FLAGS)
+				Case #OP_POF
+					; pop flags
+					POP(*CPU\FLAGS)
+				Case #OP_PUC
+					; push C Register
+					PUSH(*CPU\C)
+				Case #OP_POC
+					; pop C Register
+					POP(*CPU\C)
+				Case #OP_PUX
+					; push X Register
+					PUSH(*CPU\X)
+				Case #OP_POX
+					; pop X Register
+					POP(*CPU\X)
+				Case #OP_PUV
+					; push V Register
+					PUSH(*CPU\V)
+				Case #OP_POV
+					; pop V Register
+					POP(*CPU\V)
+				Case #OP_ADS
+					; add value to stack pointer
+					GETVAL_READ(System\nextIP, valI1)
+					*CPU\SP + valI1
+				Case #OP_SCR
+					; open screen
+					GETVAL_READ(System\nextIP, System\SCR_Width)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, System\SCR_Height)
+					
+					System\SCR_Width = CLAMP(System\SCR_Width, 1, 1000)
+					System\SCR_Height = CLAMP(System\SCR_Height, 1, 1000)
+					System\VRAM_Size = System\SCR_Width * System\SCR_Height
+					
+					Dim *CPU\VRAM(System\VRAM_Size)
+					
+					If IsWindow(#w_Screen)
+						System_CloseScreen(#True)
+						System\SCR_Active = OpenWindowedScreen(WindowID(#w_Screen), 0, 0, System\SCR_Width, System\SCR_Height, 1, 0, 0);, #PB_Screen_NoSynchronization)
+ 						SetFrameRate(120)
+						
+						If *CurrentFile
+							SetWindowTitle(#w_Screen, *CurrentFile\path)
+						EndIf
+						
+						SetWindowState(#w_Screen, #PB_Window_Maximize)
+						PostEvent(#PB_Event_SizeWindow, #w_Screen, 0, 0, 1)
+						
+						If System\SCR_Active
+							ClearScreen(0)
+							FlipBuffers()
+							ReleaseMouse(1)
+						EndIf
+						
+						System\SCR_Visible = #True
+						HideWindow(#w_Screen, 0)
+					EndIf
+				Case #OP_CLS
+					; cleaar screen
+					GETVAL(System\ADR_COL_Front, valL)
+					ClearScreen(RGB(25,25,50))
+					valI2 = ArraySize(*CPU\VRAM())
+					If valI2 >= 0
+						FillMemory(@*CPU\VRAM(0), valI2 * SizeOf(long), valL, TypeOf(valL))
+					EndIf
+				Case #OP_CHS
+					; set char size
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_CHR_W, valI1)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_CHR_H, valI1)
+				Case #OP_CHM
+					; set char mode
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_CHR_MODE, valI1)
+				Case #OP_CXY
+					; set char position
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_CHR_X, valI1)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_CHR_Y, valI1)
+				Case #OP_CHR
+					; write char
+					Define source, x, y, cx, cy
+					Define chrW, chrH, chrX, chrY, chrMode, scrW, scrH
+					Define adrR, adrV, adrStart, adrAdd, adrSub
+					Define color, collision, colID, colF, colB
+					
+					GETVAL_READ(System\nextIP, source)
+					
+					If source >= 0 And source < System\RAM_Size
+						scrW = System\SCR_Width
+						scrH = System\SCR_Height
+						GETVAL(System\ADR_Collision, collision)
+						GETVAL(System\ADR_COL_Front, colF)
+						GETVAL(System\ADR_COL_Back, colB)
+						GETVAL(System\ADR_CHR_X, chrX)
+						GETVAL(System\ADR_CHR_Y, chrY)
+						GETVAL(System\ADR_CHR_W, chrW)
+						GETVAL(System\ADR_CHR_H, chrH)
+						GETVAL(System\ADR_CHR_MODE, chrMode)
+						GETVAL(System\ADR_CollisionID, colID)
+						colID << 8
+						
+						chrW - 1
+						chrH - 1
+						
+						Select chrMode
+							Case 0 ; normal mode
+								adrStart = source
+								adrAdd = 1
+								adrSub = 0
+							Case 1 ; rotate 90°
+								adrStart = source + chrH * (chrW + 1)
+								adrAdd = -(chrW + 1)
+								adrSub = (chrW + 1) * (ChrH + 1) + 1
+								Swap chrW, chrH
+							Case 2 ; rotate 180°
+								adrStart = source + (ChrW + 1) * (chrH + 1) - 1
+								adrAdd = -1
+								adrSub = 0
+							Case 3 ; rotate 270°
+								adrStart = source + chrW
+								adrAdd = chrW + 1
+								adrSub = -(chrW + 1) * (chrH + 1) - 1
+								Swap chrW, chrH
+							Case 4 ; flip x-axis
+								adrStart = source + ChrW
+								adrAdd = -1
+								adrSub =  ChrW * 2 + 2
+							Case 5 ; flip y-axis
+								adrStart = source + ChrH * (chrW + 1)
+								adrAdd = 1
+								adrSub = -(chrW + 1) * 2
+							Default ; normal mode
+								adrStart = source
+								adrAdd = 1
+								adrSub = 0
+						EndSelect
+						
+						If colF
+							
+							adrR = adrStart
+							cy = chrY
+							For y = 0 To chrH
+								cx = chrX
+								adrV = cx + cy * scrW
+								For x = 0 To chrW
+									If cx >= 0 And cx < scrW And cy >= 0 And cy < scrH
+										color = *CPU\RAM(adrR)
+										If color
+											If collision = 0
+												collision = *CPU\VRAM(adrV)
+												If collision & $FF00 ; collision found! 
+													collision >> 8
+													SETVAL(System\ADR_Collision, collision)
+												EndIf
+											EndIf
+											color | colID ; add collision ID to the color
+											*CPU\VRAM(adrV) = colF
+										Else
+											*CPU\VRAM(adrV) = colB
+										EndIf
+									EndIf
+									adrR + adrAdd
+									adrV + 1
+									cx + 1
+								Next
+								adrR + adrSub
+								cy + 1
+							Next
+							
+						Else		
+							
+							adrR = adrStart
+							cy = chrY
+							For y = 0 To chrH
+								cx = chrX
+								adrV = cx + cy * scrW
+								For x = 0 To chrW
+									If cx >= 0 And cx < scrW And cy >= 0 And cy < scrH
+										color = *CPU\RAM(adrR)
+										If color
+											If collision = 0
+												collision = *CPU\VRAM(adrV)
+												If collision & $FF00 ; collision found! 
+													collision >> 8
+													SETVAL(System\ADR_Collision, collision)
+												EndIf
+											EndIf
+											color | colID ; add collision ID to the color
+											*CPU\VRAM(adrV) = color
+										ElseIf colB
+											*CPU\VRAM(adrV) = colB
+										EndIf
+									EndIf
+									adrR + adrAdd
+									adrV + 1
+									cx + 1
+								Next
+								adrR + adrSub
+								cy + 1
+							Next
+							
+						EndIf
+					EndIf
+				Case #OP_PAL
+					; set palette mode on/off
+					GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_Palette))
+				Case #OP_CLF
+					; set front color
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_COL_Front, valI1)
+				Case #OP_CLB
+					; set back color
+					GETVAL_READ(System\nextIP, valI1)
+					SETVAL(System\ADR_COL_Back, valI1)
+				Case #OP_PLT
+					Define x, y, adr
+					
+					GETVAL_READ(System\nextIP, x)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, y)
+					adr = x + y * System\SCR_Width
+					If adr >= 0 And adr < System\VRAM_Size
+						GETVAL(System\ADR_COL_Front, *CPU\VRAM(adr))
+					EndIf
+				Case #OP_DRW
+					Define x, y, scrW, scrH, adrV, c.a, palette
+					
+					If System\SCR_Active
+						GETVAL(System\ADR_Palette, palette)
+						If StartDrawing(ScreenOutput())
+							scrW = System\SCR_Width - 1
+							scrH = System\SCR_Height - 1
+							adrV = 0
+							
+							If palette = 0
+								For y = 0 To scrH
+									For x = 0 To scrW
+										Plot(x, y, *CPU\VRAM(adrV))
+										adrV + 1
+									Next
+								Next
+							Else
+								For y = 0 To scrH
+									For x = 0 To scrW
+										c = *CPU\VRAM(adrV) 
+										Plot(x, y, *CPU\RAM(System\ADR_Color + c))
+										adrV + 1
+									Next
+								Next
+							EndIf
+							StopDrawing()
+							
+							FlipBuffers()
+						EndIf
+					EndIf
+				Case #OP_DLY
+					Define curIP, nextIP
+					
+					If System\wait = 0
+						curIP = System\nextIP
+						GETVAL_READ(System\nextIP, valI1)
+						System\wait = System\time + valI1
+						nextIP = System\nextIP
+						System\nextIP = curIP
+					ElseIf System\time >= System\wait
+						System\wait = 0
+						System\nextIP = nextIP
+					Else
+						Delay(5)
+					EndIf
+				Case #OP_INP
+					If System\SCR_Active
+						ExamineMouse()
+						ExamineKeyboard()
+						
+						*CPU\FLAGS = KeyboardPushed(#PB_Key_All)
+						System\MouseX = MouseX()
+						System\MouseY = MouseY()
+						System\MouseB = 0
+						
+						If MouseButton(#PB_MouseButton_Left)
+							System\MouseB | #Button_Left
+						EndIf
+						If MouseButton(#PB_MouseButton_Right)
+							System\MouseB | #Button_Right
+						EndIf
+					Else
+						*CPU\FLAGS = 0
+					EndIf
+				Case #OP_KEY
+					GETVAL_READ(System\nextIP, valI1)
+					*CPU\FLAGS = Bool(KeyboardPushed(valI1))
+				Case #OP_SNP
+					GETVAL_READ(System\nextIP, valI1)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, valI2)
+					
+					If SoundSystemOK
+						If valI1
+							If IsSound(valI1)
+								If valI2 = 0
+									StopSound(valI1)
+								ElseIf valI2 = 2
+									PauseSound(valI1)
+								Else
+									PlaySound(valI1)
+								EndIf
+							EndIf
+						Else
+							If valI2 = 2
+								PauseSound(#PB_All)
+							Else
+								StopSound(#PB_All)
+							EndIf
+						EndIf
+					EndIf
+				Case #OP_SNS
+					GETVAL_READ(System\nextIP, valI1)
+					
+					If SoundSystemOK
+						*CPU\FLAGS = -1
+						If IsSound(valI1)
+							Select SoundStatus(valI1)
+								Case #PB_Sound_Stopped : *CPU\FLAGS = 0
+								Case #PB_Sound_Playing : *CPU\FLAGS = 1
+								Case #PB_Sound_Paused : *CPU\FLAGS = 2
+							EndSelect
+						EndIf
+					EndIf
+				Case #OP_DBG
+					Define *token.TOKEN
+					
+					GETVAL_READ(System\nextIP, *token)
+					GETNEXTADRMODE()
+					GETVAL_READ(System\nextIP, valF1)
+					
+					valS = GetGadgetItemText(#g_Debug, CountGadgetItems(#g_Debug) - 1)
+					If *token
+						valI1 = ValF1
+						valS + Trim(TokenText(*token), #DOUBLEQUOTE$)
+						valS = ReplaceString(valS, "%i", Str(valI1))
+						valS = ReplaceString(valS, "%c", Str(valI1 % 255))
+						valS = ReplaceString(valS, "%f", StrD(valF1))
+					Else
+						valS = StrD(valF1)
+					EndIf
+					
+					RemoveGadgetItem(#g_Debug, CountGadgetItems(#g_Debug) - 1)
+	 				AddGadgetItem(#g_Debug, -1, ReplaceString(valS, "\n", #NL$))
+					HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
+				Case #OP_HLT
+					System_Error(System_LineNrByIP(*CPU\IP) + 1, "HALT - PROGRAM PAUSED!", #True)
+					System_RunState((RunState & ~(#STATE_PAUSE | #STATE_STEPOUT)) | (#STATE_STEP | #STATE_RUN))
+				Case #OP_END
+					System\state | #STATE_END
+					System_CloseScreen(#True)
+					System_RunState(0)
+				Default
+					GETVAL(*CPU\IP, valF1)
+					System_Error(System_LineNrByIP(*CPU\IP), "Illegal opcode: " + FSTR(valF1))
+					System\state | #STATE_END
+					System_RunState(0)
+			EndSelect
+			
 			If System\wait <= 0
 				*CPU\IP = System\nextIP
 			EndIf
-			If System\state & #STATE_ERROR
+			
+			If SYSTEM_HASERROR()
 				System_RunState(RunState & ~(#STATE_RUN | #STATE_STEPOUT))
 			EndIf
 			
 			If (RunState & #STATE_STEPOUT)
-				If (opcode = #_RET) And (System\callDepth < System\exitDepth)
+				If (opcode = #OP_POI) And (System\callDepth < System\exitDepth)
 					System_RunState((RunState & ~#STATE_STEPOUT) | #STATE_PAUSE)
 				EndIf
 			Else
@@ -3826,9 +4443,13 @@ Repeat
 			EndIf
 			
 		EndIf
+		
 	Else
+		
 		WaitWindowEvent()
+		
 	EndIf
+	
 Until System\state & #STATE_QUIT
 
 End
@@ -3836,73 +4457,86 @@ End
 ;{
 DataSection
 	Opcodes:
-	; opcode, procAddress, nrParams, size, name
-	Data.i #_SET, @OP_SET(), 1, 2 : Data.s "SET"
-	Data.i #_MOV, @OP_MOV(), 1, 2 : Data.s "="
-	Data.i #_WRT, @OP_WRT(), 1, 2 : Data.s "WRT"
-	Data.i #_ADD, @OP_ADD(), 1, 2 : Data.s "+"
-	Data.i #_SUB, @OP_SUB(), 1, 2 : Data.s "-"
-	Data.i #_MUL, @OP_MUL(), 1, 2 : Data.s "*"
-	Data.i #_DIV, @OP_DIV(), 1, 2 : Data.s "/"
-	Data.i #_POW, @OP_POW(), 1, 2 : Data.s "^"
-	Data.i #_MOD, @OP_MOD(), 1, 2 : Data.s "%"
-	Data.i #_INT, @OP_INT(), 0, 1 : Data.s "INT"
-	Data.i #_CIL, @OP_CIL(), 0, 1 : Data.s "CIL"
-	Data.i #_ABS, @OP_ABS(), 0, 1 : Data.s "ABS"
-	Data.i #_NEG, @OP_NEG(), 0, 1 : Data.s "NEG"
-	Data.i #_NTH, @OP_NTH(), 1, 2 : Data.s "NTH"
-	Data.i #_MIN, @OP_MIN(), 1, 2 : Data.s "MIN"
-	Data.i #_MAX, @OP_MAX(), 1, 2 : Data.s "MAX"
-	Data.i #_SGN, @OP_SGN(), 0, 1 : Data.s "SGN"
-	Data.i #_RND, @OP_RND(), 0, 1 : Data.s "RND"
-	Data.i #_IFL, @OP_IFL(), 1, 3 : Data.s "?"
-	Data.i #_IGR, @OP_IGR(), 1, 3 : Data.s ">"
-	Data.i #_IGE, @OP_IGE(), 1, 3 : Data.s ">="
-	Data.i #_ILO, @OP_ILO(), 1, 3 : Data.s "<"
-	Data.i #_ILE, @OP_ILE(), 1, 3 : Data.s "<="
-	Data.i #_IEQ, @OP_IEQ(), 1, 3 : Data.s "=="
-	Data.i #_INE, @OP_INE(), 1, 3 : Data.s "<>"
-	Data.i #_JMP, @OP_JMP(), 1, 2 : Data.s "JMP"
-	Data.i #_JMF, @OP_JMF(), 2, 3 : Data.s "JMF"
-	Data.i #_STP, @OP_STP(), 1, 2 : Data.s "STP"
-	Data.i #_TO,  @OP_TO(),  1, 3 : Data.s "TO"
-	Data.i #_CAL, @OP_CAL(), 1, 2 : Data.s "CAL"
-	Data.i #_RET, @OP_RET(), 0, 1 : Data.s "RET"
-	Data.i #_PSH, @OP_PSH(), 1, 2 : Data.s "PSH"
-	Data.i #_POP, @OP_POP(), 1, 2 : Data.s "POP"
-	Data.i #_PSF, @OP_PSF(), 0, 1 : Data.s "PSF"
-	Data.i #_POF, @OP_POF(), 0, 1 : Data.s "POF"
-	Data.i #_PSC, @OP_PSC(), 0, 1 : Data.s "PSC"
-	Data.i #_POC, @OP_POC(), 0, 1 : Data.s "POC"
-	Data.i #_SCR, @OP_SCR(), 2, 3 : Data.s "SCR"
-	Data.i #_CLS, @OP_CLS(), 1, 2 : Data.s "CLS"
-	Data.i #_DRW, @OP_DRW(), 0, 1 : Data.s "DRW"
-	Data.i #_CHS, @OP_CHS(), 2, 3 : Data.s "CHS"
-	Data.i #_CXY, @OP_CXY(), 2, 3 : Data.s "CXY"
-	Data.i #_CHM, @OP_CHM(), 1, 2 : Data.s "CHM"
-	Data.i #_CHR, @OP_CHR(), 1, 2 : Data.s "CHR"
-	Data.i #_PLT, @OP_PLT(), 2, 3 : Data.s "PLT"
-	Data.i #_CLF, @OP_CLF(), 1, 2 : Data.s "CLF"
-	Data.i #_CLB, @OP_CLB(), 1, 2 : Data.s "CLB"
-	Data.i #_DLY, @OP_DLY(), 1, 2 : Data.s "DLY"
-	Data.i #_INP, @OP_INP(), 0, 1 : Data.s "INP"
-	Data.i #_KEY, @OP_KEY(), 1, 2 : Data.s "KEY"
-	Data.i #_SNP, @OP_SNP(), 2, 3 : Data.s "SNP"
-	Data.i #_SNS, @OP_SNS(), 1, 2 : Data.s "SNS"
-	Data.i #_DBG, @OP_DBG(), 1, 2 : Data.s "DBG"
-	Data.i #_HLT, @OP_HLT(), 0, 1 : Data.s "HLT"
-	Data.i #_KIL, @OP_KIL(), 0, 1 : Data.s "KIL"
-	Data.i #_END, @OP_END(), 0, 1 : Data.s "END"
-	Data.i 0, 0, 0, 0
+	; opcode, nrParams, size, name
+	Data.i #OP_GET, 1, 2 : Data.s "GET,Get"
+	Data.i #OP_SET, 1, 2 : Data.s "SET,="
+	Data.i #OP_ADD, 1, 2 : Data.s "ADD,+"
+	Data.i #OP_SUB, 1, 2 : Data.s "SUB,-"
+	Data.i #OP_MUL, 1, 2 : Data.s "MUL,*"
+	Data.i #OP_DIV, 1, 2 : Data.s "DIV,/"
+	Data.i #OP_SQR, 0, 1 : Data.s "SQR,Sqr"
+	Data.i #OP_POW, 1, 2 : Data.s "POW,^"
+	Data.i #OP_SHL, 1, 2 : Data.s "SHL,<<"
+	Data.i #OP_SHR, 1, 2 : Data.s "SHR,>>"
+	Data.i #OP_AND, 1, 2 : Data.s "AND,&&"
+	Data.i #OP__OR, 1, 2 : Data.s "OR,||"
+	Data.i #OP_MOD, 1, 2 : Data.s "MOD,%"
+	Data.i #OP_INT, 0, 1 : Data.s "INT,Floor"
+	Data.i #OP_CIL, 0, 1 : Data.s "CIL,Ceil"
+	Data.i #OP_ABS, 0, 1 : Data.s "ABS,Abs"
+	Data.i #OP_NEG, 0, 1 : Data.s "NEG,Neg"
+	Data.i #OP_NTH, 1, 2 : Data.s "NTH,Nth"
+	Data.i #OP_MIN, 1, 2 : Data.s "MIN,Min"
+	Data.i #OP_MAX, 1, 2 : Data.s "MAX,Max"
+	Data.i #OP_SGN, 0, 1 : Data.s "SGN,Sgn"
+	Data.i #OP_RSD, 1, 2 : Data.s "RSD,Seed"
+	Data.i #OP_RND, 0, 1 : Data.s "RND,Rnd"
+	Data.i #OP_IFL, 1, 3 : Data.s "IFL,Is"
+	Data.i #OP_IGR, 1, 3 : Data.s "IGR,>"
+	Data.i #OP_IGE, 1, 3 : Data.s "IGE,>="
+	Data.i #OP_ILO, 1, 3 : Data.s "ILO,<"
+	Data.i #OP_ILE, 1, 3 : Data.s "ILE,<="
+	Data.i #OP_IEQ, 1, 3 : Data.s "IEQ,=="
+	Data.i #OP_INE, 1, 3 : Data.s "INE,<>"
+	Data.i #OP_JMP, 1, 2 : Data.s "JMP,Jmp"
+	Data.i #OP_JMF, 2, 3 : Data.s "JMF,JmpF"
+	Data.i #OP_STP, 1, 2 : Data.s "STP,Count"
+	Data.i #OP_TO,  1, 3 : Data.s "TO,To"
+	Data.i #OP_PSH, 1, 2 : Data.s "PSH,Push"
+	Data.i #OP_POP, 1, 2 : Data.s "POP,Pop"
+	Data.i #OP_PUI, 0, 1 : Data.s "PUI,PushI"
+	Data.i #OP_POI, 0, 1 : Data.s "POI,PopI"
+	Data.i #OP_PUS, 0, 1 : Data.s "PUS,PushS"
+	Data.i #OP_POS, 0, 1 : Data.s "POS,PopS"
+	Data.i #OP_PUV, 0, 1 : Data.s "PUV,PushV"
+	Data.i #OP_POV, 0, 1 : Data.s "POV,PopV"
+	Data.i #OP_PUF, 0, 1 : Data.s "PUF,PushF"
+	Data.i #OP_POF, 0, 1 : Data.s "POF,PopF"
+	Data.i #OP_POC, 0, 1 : Data.s "POC,PopC"
+	Data.i #OP_PUX, 0, 1 : Data.s "PUX,PushX"
+	Data.i #OP_POX, 0, 1 : Data.s "POX,PopX"
+	Data.i #OP_PUC, 0, 1 : Data.s "PUC,PushC"
+	Data.i #OP_POC, 0, 1 : Data.s "POC,PopC"
+	Data.i #OP_ADS, 1, 2 : Data.s "ADS,AddSP"
+	Data.i #OP_SCR, 2, 3 : Data.s "SCR,Screen"
+	Data.i #OP_CLS, 0, 1 : Data.s "CLS,Cls"
+	Data.i #OP_DRW, 0, 1 : Data.s "DRW,Draw"
+	Data.i #OP_CHS, 2, 3 : Data.s "CHS,SetSize"
+	Data.i #OP_CXY, 2, 3 : Data.s "CXY,SetXY"
+	Data.i #OP_CHM, 1, 2 : Data.s "CHM,SetMode"
+	Data.i #OP_CHR, 1, 2 : Data.s "CHR,Bitmap"
+	Data.i #OP_PLT, 2, 3 : Data.s "PLT,Plot"
+	Data.i #OP_PAL, 1, 2 : Data.s "PAL,Palette"
+	Data.i #OP_CLF, 1, 2 : Data.s "CLF,ColorF"
+	Data.i #OP_CLB, 1, 2 : Data.s "CLB,ColorB"
+	Data.i #OP_DLY, 1, 2 : Data.s "DLY,Delay"
+	Data.i #OP_INP, 0, 1 : Data.s "INP,Input"
+	Data.i #OP_KEY, 1, 2 : Data.s "KEY,Key"
+	Data.i #OP_SNP, 2, 3 : Data.s "SNP,Play"
+	Data.i #OP_SNS, 1, 2 : Data.s "SNS,PlayState"
+	Data.i #OP_DBG, 2, 3 : Data.s "DBG,Debug"
+	Data.i #OP_HLT, 0, 1 : Data.s "HLT,Halt"
+	Data.i #OP_KIL, 0, 1 : Data.s "KIL,Kill"
+	Data.i #OP_END, 0, 1 : Data.s "END,End"
+	Data.i 0, 0, 0
 EndDataSection
 ;}
 ; IDE Options = PureBasic 6.03 LTS (Windows - x64)
-; CursorPosition = 510
-; FirstLine = 510
-; Folding = ----+-----------------
-; Markers = 283
+; CursorPosition = 1091
+; FirstLine = 1085
+; Folding = ---------------
+; Optimizer
 ; EnableXP
 ; DPIAware
 ; UseIcon = _ico\icon.ico
-; Executable = sho.co2.exe
 ; DisableDebugger
