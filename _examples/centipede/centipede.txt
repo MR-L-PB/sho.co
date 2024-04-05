@@ -1,0 +1,1676 @@
+' clone of the 80th arcade classic "CENTIPEDE'
+' written in sho.co
+' move with the cursor-keys, press space to shoot
+
+Define #BODY 0
+Define #HEAD 1
+Define #SINGLEHEAD 2
+Define #DEAD 3
+Define #SHOT_FLY 1
+Define #SHOT_HIT 2
+
+Sound( ' loading sounds...
+	S_Shot "_snd\shot.wav"
+	S_Flea "_snd\flea.wav"
+	S_Spider "_snd\spider.wav"
+	S_Scorpion "_snd\scorpion.wav"
+	S_Count "_snd\count.wav"
+	S_Death "_snd\death.wav"
+	S_Centipede "_snd\centipede.wav"
+	S_Hit "_snd\hit.wav"
+	S_Hit2 "_snd\hit2.wav"
+	S_Clear "_snd\clear.wav"
+)
+
+Int( ' define global variables:
+	Level Score Score_X Score_Y Score_BMP OneUpScore ColIndex
+	Centipede_Size Centipede_Heads Centipede_NewHead Centipede_MaxSize Centipede_Dead Centipede_Step Centipede_Delay Centipede_NewHeadTime
+	Flea_Enabled Flea_X Flea_Y Flea_Yd Flea_Time
+	Spider_Enabled Spider_X Spider_Y Spider_Xd Spider_Yd Spider_Dir Spider_Count Spider_Time
+	Scorpion_Enabled Scorpion_X Scorpion_Y Scorpion_Xd Scorpion_Time
+	Explosion_X Explosion_Y Explosion_X2 Explosion_Count
+	Shooter_X Shooter_Y Shooter_Xd Shooter_Yd Shooter_Time Shooter_Lives Shot_X Shot_Y Shot_State
+	Update_Time Input_Time Centipede_Time Anim_Time Redraw_Time Score_Time
+	AnimCounter Centipede_Speed Game_Over
+)
+
+Int Field(960)
+Int Centipede_X(32)
+Int Centipede_Y(32)
+Int Centipede_Xd(32)
+Int Centipede_Yd(32)
+Int Centipede_DirY(32)
+Int Centipede_Type(32)
+Int Centipede_Poisoned(32)
+
+ScrW = 30 * 8
+ScrH = 32 * 8
+ScrX = ScrW - 8
+ScrY = ScrH - 8
+
+MinX_A = -20
+MaxX_A = ScrW - 1
+MaxRow = 26
+MaxY = MaxRow * 8
+MaxH = ScrH - 16
+MinH = MaxRow * 8
+
+HighScore = 0
+
+Screen ScrW ScrH
+
+$INIT_GAME
+$GAME_OVER
+
+:LOOP
+    Time = #TIME
+	
+    Time > Update_Time (
+		Update_Time = Time + 8
+
+		Time > Input_Time (
+			Input Is 1 (
+				Key #KEY_ESCAPE Is 1 (End)
+				Game_Over == 0 (
+					Shooter_Y > 0 (
+						Key #KEY_LEFT Is 1 (Shooter_Xd = -2)
+						Key #KEY_RIGHT Is 1 (Shooter_Xd = 2)
+						Key #KEY_UP Is 1 (Shooter_Yd = -2)
+						Key #KEY_DOWN Is 1 (Shooter_Yd = 2)
+						Key #KEY_SPACE Is 1 ($INIT_SHOT)
+					)
+				) Else (
+					$INIT_GAME
+				)
+			)
+			Input_Time = Time + 8
+		)
+		
+		$UPDATE_SHOOTER
+		$UPDATE_SHOT
+		$UPDATE_SPIDER
+		$UPDATE_SCORPION
+		$UPDATE_FLEA
+	)
+	Time > Centipede_Time (
+		Centipede_Time = Time + Centipede_Speed
+		$UPDATE_CENTIPEDE
+	)
+	Time > Anim_Time (AnimCounter + 1 Anim_Time = Time + 30)
+	Time > Score_Time (Score_Y = -1)
+    Time > Redraw_Time ($DRAW Redraw_Time = Time + 25)
+	Else (Delay 5)
+Jmp :LOOP
+
+Define $SET_COLOR a b c d(
+	Int Color = #COLOR
+	!Color.0 = a
+	!Color.1 = b
+	!Color.2 = c
+	!Color.3 = d
+)
+
+Define $INIT_GAME(
+	Game_Over = 0
+	Score = 0
+	OneUpScore = 12000
+	Level = -2
+	Shooter_Lives = 2
+
+	$KILL_FLEA
+	$KILL_SPIDER
+	$KILL_SCORPION
+
+	$INIT_FIELD
+	$INIT_LEVEL
+	$INIT_SHOOTER 
+	$INIT_CENTIPEDE
+)
+	
+Define $INIT_LEVEL(
+	Level + 1 % 14	
+	Play 0 0
+	
+	Centipede_Size = 11
+	
+	Level == 00 (Spider_Enabled = 0 Flea_Enabled = 0 Scorpion_Enabled = 0 Centipede_Heads = 0 Centipede_Speed = 16 $SET_COLOR 0 12648447 255 65280)
+	Else (== 01 (Spider_Enabled = 1 Centipede_Heads = 1 Centipede_Speed = 16 $SET_COLOR 0 49407 12648192 12583167))
+	Else (== 02 (Flea_Enabled = 1 Centipede_Heads = 2 Centipede_Speed = 15 $SET_COLOR 0 12648192 65535 255))
+	Else (== 03 (Scorpion_Enabled = 1 Centipede_Heads = 3 Centipede_Speed = 15 $SET_COLOR 0 12648192 16711680 49407))
+	Else (== 04 (Centipede_Heads = 4 Centipede_Speed = 14 $SET_COLOR 0 65535 16711935 12583167))
+	Else (== 05 (Centipede_Heads = 5 Centipede_Speed = 14 $SET_COLOR 0 16711680 49407 12648192))
+	Else (== 06 (Centipede_Speed = 13 $SET_COLOR 0 65280 12583167 65535))
+	Else (== 07 (Centipede_Speed = 13 $SET_COLOR 0 65535 255 12648192))
+	Else (== 08 (Centipede_Heads = 2 Centipede_Speed = 13 $SET_COLOR 0 255 12648192 12583167))
+	Else (== 09 (Centipede_Heads = 3 Centipede_Speed = 12 $SET_COLOR 0 12648192 16711680 49407))
+	Else (== 10 (Centipede_Heads = 4 Centipede_Speed = 12 $SET_COLOR 0 12648447 255 12648192))
+	Else (== 11 (Centipede_Speed = 12 $SET_COLOR 0 255 12583167 65280))
+	Else (== 12 (Centipede_Speed = 10 $SET_COLOR 0 65535 16711680 255))
+	Else (== 13 (Centipede_Speed = 10 $SET_COLOR 0 65280 12583167 12648447))
+
+	Time = #TIME
+	Centipede_NewHead = 0
+	$KILL_FLEA
+	$KILL_SPIDER
+	$KILL_SCORPION
+	$INIT_CENTIPEDE
+)
+
+Define $INIT_FIELD(
+	I = 30 * MaxRow + 8 - 1
+	Step -1 To 0(
+		(Rnd) > 0.93 (Field.I = ~BMP_shroom0)
+		Else (Field.I = 0)
+    )
+)
+
+Define $INIT_SHOOTER(
+	Game_Over == 0 (
+		Shooter_Y < 0 ($Count_Field)
+		Shooter_Lives < 0 (
+			$GAME_OVER
+		) Else (	
+			$INIT_LEVEL
+			Shooter_X = ScrW / 2
+			Shooter_Y = MaxH
+		)
+	)
+)
+
+Define $INIT_SHOT(
+	Shot_State == 0 (
+		Shot_State = #SHOT_FLY
+		Shot_X = Shooter_X - 8
+		Shot_Y = Shooter_Y
+		Play S_Shot 1
+	)
+)
+				
+Define $INIT_CENTIPEDE(
+	Centipede_MaxSize = Centipede_Size + Centipede_Heads
+	Centipede_Step = 0
+
+	Int I = 0 Step 1 To 29 (Field.I = 0)
+	I = 30 Step -1 To 0 (
+		Centipede_Type.I = #DEAD
+		Centipede_X.I = 0
+		Centipede_Y.I = 0
+		Centipede_Xd.I = 0
+		Centipede_Yd.I = 0
+		Centipede_DirY.I = 0
+		Centipede_Poisoned.I = 0
+	)
+	I = Centipede_MaxSize Step -1 To Centipede_Size (
+		Centipede_X.I = (Rnd * 29 Floor * 8)
+		Centipede_Type.I = #SINGLEHEAD
+		Centipede_DirY.I = 1
+		(Rnd) < 0.5 (Centipede_Xd.I = -1) Else (Centipede_Xd.I = 1)
+		Centipede_Yd.I = 1
+	)
+	Centipede_Type.Centipede_Size = #HEAD
+	Centipede_X.Centipede_Size = Centipede_Xd.Centipede_Size Min 0 + 14 * 8
+	I = (Centipede_Size - 1) Step -1 To 0 (
+		Centipede_Type.I = #BODY
+		Centipede_X.I = Centipede_X.Centipede_Size
+	)
+	Centipede_Delay = Time + 2000
+)
+
+Define $INIT_HEAD(
+	Centipede_Heads < 6 (
+		Centipede_Heads + 1
+		Centipede_MaxSize = Centipede_Size + Centipede_Heads
+		Int I = Centipede_MaxSize
+		
+		(Rnd) < 0.5 (Int x = -1 Centipede_Xd.I = 1) Else (x = 30 Centipede_Xd.I = -1)
+		Centipede_Type.I = #SINGLEHEAD
+		Centipede_X.I = x * 8
+		Centipede_Y.I = MaxRow * 8
+		Centipede_Yd.I = 0
+		Centipede_DirY.I = 1
+		Centipede_Poisoned.I = 0
+	)
+)
+	
+Define $INIT_FLEA(
+	Flea_X = (Rnd * 29) Floor * 8
+	Flea_Y = 0
+	Flea_Yd = 2
+	Play S_Flea 1
+)
+
+Define $INIT_SPIDER(
+	(Rnd) < 0.5 (Spider_X = MinX_A Spider_Dir = 1) Else (Spider_X = MaxX_A Spider_Dir = -1)
+	Spider_Y = (Rnd * 8 + 20) Floor * 8
+	Spider_step = (Rnd * 5 Floor * 24 + 8)
+	Spider_Yd = -1
+	Spider_Xd = Spider_Dir
+	Spider_Time = 0	
+)
+
+Define $INIT_SCORPION(
+	Scorpion_Xd = 1
+	(Rnd) < 0.5 ( Scorpion_X = MinX_A) Else (Scorpion_X = MaxX_A Scorpion_Xd Neg)
+	Scorpion_Y = (Rnd * 15 + 2) Floor * 8
+)
+
+Define $KILL_FLEA(
+	Flea_Y = -1
+	Flea_Time = Time + 5000
+	Play S_Flea 0
+)
+	
+Define $KILL_SPIDER(
+	Spider_Y = -1
+	Spider_Time = Time + 5000
+	Play S_Spider 0
+)
+	
+Define $KILL_SCORPION(
+	Scorpion_Y = -1
+	Scorpion_Time = Time + 5000
+	Play S_Scorpion 0
+)
+	 
+Define $KILL_SHOOTER(
+	Play 0 0
+	Play S_Death 1
+	
+	Explosion_X = Shooter_X - 8
+	Explosion_Y = Shooter_Y
+	Explosion_X2 = 1
+	Explosion_Count = 4
+			
+	Shooter_Lives - 1
+	Shooter_Y = -1
+	Shooter_Time = Time + 2000
+	Level - 1
+)
+
+Define $GAME_OVER(	
+	Game_Over = 1
+
+	Shooter_Lives = -1
+	$DRAW_TEXT ~TXT_HIGHSCORES 9 2
+	$DRAW_TEXT ~TXT_COIN 8 12
+	$DRAW_TEXT ~TXT_CREDITS 10 13
+	$DRAW_TEXT ~TXT_BONUS 6 14
+	$DRAW_TEXT ~TXT_GAMEOVER 10 16
+	
+	Int name = ~TXT_NAME
+
+	Int Score = (Rnd * 7000) Floor + 10000
+	HighScore < Score (Int firstRow = 4)
+	Else(
+		!name.0 = 24 'Y
+		!name.1 = 14' O
+		!name.2 = 20' U
+		$DRAW_TEXT ~TXT_NAME 10 4
+		$DRAW_NUMBER HighScore 14 4 4
+		firstRow = 5
+	)
+		
+	Int row = firstRow Step 1 To 10 (
+		!name.0 = (Rnd * 25 Floor)
+		!name.1 = (Rnd * 25 Floor)
+		!name.2 = (Rnd * 25 Floor)
+
+		$DRAW_TEXT ~TXT_NAME 10 row
+		$DRAW_NUMBER score 14 row 4
+		score - (Rnd * 1000)
+	)
+	
+	score = 0
+	Input_Time = Time + 2000
+)
+
+Define $SPLIT_CENTIPEDE(
+	Int I = ColIndex
+	
+	' turn the next field into a mushroom
+    Int col = (Centipede_X.I >> 3 + Centipede_Xd.I Min 0 Max 29)
+	Int f = Centipede_Y.I >> 3 * 30 + col
+	Int s = Shooter_Y >> 3 * 30 + (Shooter_X >> 3)
+	f <> s (Field.f = ~BMP_shroom0) ' don't place a shroom on the Shooter (it might get stuck!)
+
+	' turn the previous segment into a head
+    I = ColIndex - 1 Min 0
+    Centipede_Type.I <> #BODY (I = ColIndex)
+    Centipede_Type.I = #HEAD
+	
+	' test if it's a single head
+	I == 0 (Centipede_TYPE.I = #SINGLEHEAD) Else (Int N = I - 1 Centipede_Type.N <> #BODY (Centipede_Type.I = #SINGLEHEAD))
+	
+'	 test if next head is single too
+	N = ColIndex + 1 Max Centipede_MaxSize
+	Centipede_Type.N == #HEAD (Centipede_Type.N = #SINGLEHEAD)
+	
+	N = ColIndex + 1 Step 1 To Centipede_MaxSize (
+		Centipede_Poisoned.I = 0
+		Centipede_Type.N == #HEAD (Centipede_DirY.I = Centipede_DirY.N) Else (Break)
+	)
+	N = ColIndex Step -1 To 0(
+		Centipede_Type.N == #BODY (Centipede_Poisoned.I = 0) Else (Break)
+	)
+	
+	' remove the shot segment
+	I = ColIndex
+    Centipede_Type.I = #DEAD
+	
+	Explosion_X = Centipede_X.I
+	Explosion_Y = Centipede_Y.I
+	Explosion_Count = 4
+    Shot_State = 0
+)
+
+Define $MOVE_CENTIPEDE I(
+	' if the head hits a mushroom or the border, change the horizontal direction and move up or down, according to the
+	' current vertical direction (unless it is poisoned, then the horizontal movement is ignored).
+
+	Int col = Centipede_X.I >> 3
+	Int row = Centipede_Y.I >> 3
+	
+	Int yd = 0
+	Centipede_Poisoned.I == 0 (
+		yd = Centipede_Yd.I
+		Centipede_yd.I = 0
+		col + Centipede_Xd.I < 0 (Centipede_Yd.I = Centipede_DirY.I)
+		Else (> 29 (Centipede_Yd.I = Centipede_DirY.I))
+		Else (
+			Int f = row * 30 + col
+			Field.f > 0 (
+				== ~BMP_shroomP0 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1)
+				Else (== ~BMP_shroomP1 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
+				Else (== ~BMP_shroomP2 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
+				Else (== ~BMP_shroomP3 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
+				Else (Centipede_Yd.I = Centipede_DirY.I)
+			)
+		)
+	)
+	
+	Centipede_Xd.I == 0 (Centipede_Xd.I = 1)
+	Centipede_y.I < 8 (Centipede_Yd.I = 1 Centipede_DirY.I = 1) ' make sure the centipede doesn't get stuck in the first row!
+	Else (Centipede_y.I > MaxH (Centipede_Y.I = 0))
+	
+	yd == 0 ( Centipede_Yd.I <> 0 (
+		Centipede_Xd.I Neg
+		row < MaxRow (Centipede_DirY.I  = 1 Centipede_Yd.I < 0 (Centipede_NewHead = 1))
+		row > 28 (
+			Centipede_DirY.I = -1
+			Centipede_Poisoned.I = 0
+		)
+	))
+)
+
+Define $UPDATE_CENTIPEDE(
+	Time < Centipede_Delay (Return)
+	
+	' move centipede 1 pixel in x or y direction or 2 pixels if it's a single head
+    Int I = Centipede_MaxSize Step -1 To 0 (
+		Centipede_Type.I <> #DEAD (
+			Int xd = Centipede_Xd.I
+			Int yd = Centipede_Yd.I
+			Centipede_Type.I == #SINGLEHEAD (xd * 2 yd * 2)
+			yd == 0 (Centipede_X.I + xd)
+			Else (
+				Centipede_Y.I + yd
+				Centipede_Poisoned.I <> 0 (Centipede_X.I + xd)
+			)
+		)
+    )
+	
+	Int cStep = Centipede_Step + 1 % 8 == 0(
+		Shot_State == #SHOT_HIT ($SPLIT_CENTIPEDE)
+	)
+	
+	' every 4 steps... move the single heads
+	cStep = Centipede_Step + 1 % 8 == 4(
+		I = 0 Step 1 To Centipede_MaxSize (
+			Centipede_Type.I == #SINGLEHEAD ($MOVE_CENTIPEDE I)
+		)
+	)
+
+	' every 8 steps... move the centipedes
+	Centipede_Step + 1 % 8 > 0 (Return)
+
+	Int cSound + 1 % 2 == 0 (Play S_Centipede 1)
+	
+	' copy the direction of each segment to the next segment.
+	Int I1 = 0
+	I = 0 Step 1 To Centipede_MaxSize (
+		I1 + 1
+		Centipede_Type.I == #BODY (
+			Centipede_Type.I1 <> #DEAD (
+				Centipede_Type.I1 <> #SINGLEHEAD (
+					Centipede_Yd.I = Centipede_Yd.I1
+					Centipede_Xd.I = Centipede_Xd.I1
+					Centipede_Poisoned.I = Centipede_Poisoned.I1
+					Centipede_DirY.I = Centipede_DirY.I1
+				)
+			)
+		)
+	)
+	
+	Centipede_Dead = 1
+	I = Centipede_MaxSize Step -1 To 0 (
+		Centipede_Type.I <> #DEAD (Centipede_Dead = 0)
+		Centipede_Type.I == #HEAD ($MOVE_CENTIPEDE I)
+		Else (== #SINGLEHEAD ($MOVE_CENTIPEDE I))
+	)
+	Centipede_Dead == 1 ($INIT_LEVEL Play S_Clear 1)
+	Else (Centipede_NewHead == 1 (Time > Centipede_NewHeadTime (Centipede_NewHeadTime = Time + 10000 (Rnd) > 0.5 ($INIT_HEAD))))
+)
+
+Define $UPDATE_FLEA(
+	Flea_Y >= 0 (
+		+ Flea_Yd
+		> MaxH (= -1)
+		>= 16 (< MaxH(
+			(Rnd) > 0.96 (
+				Int f = (Flea_Y >> 3) * 30 + (Flea_X >> 3)
+				Field.f == 0 (Field.f = ~BMP_shroom0)
+			)
+		))
+	)
+	Else (
+		Flea_Enabled == 1 (Time > Flea_Time ((Rnd) > 0.999 ($INIT_FLEA)))
+	)
+)
+	
+Define $UPDATE_SPIDER (
+	Spider_Y >= 0 (
+		PlayState S_Spider Is 0 (Play S_Spider 1)
+	
+		Spider_X + Spider_Xd
+		Spider_Y + Spider_Yd
+		
+		Int col = Spider_X + 4 >> 3
+		Int row = Spider_Y >> 3
+		Int f = row * 30 + col
+		Field.f = 0
+		
+		row Min 20 Is 1 (Spider_Y = row << 3 Spider_Yd Abs)
+		row Max 30 Is 1 (Spider_Y = row << 3 Spider_Yd Abs Neg)
+		Spider_Dir > 0 (Spider_X Max MaxX_A Is 1 ($KILL_SPIDER))
+		Spider_Dir < 0 (Spider_X Min MinX_A Is 1 ($KILL_SPIDER))
+		
+		Spider_Count - 1
+		Spider_Count <= 0 (
+			Spider_Count = (Rnd * 3 Floor << 3 + 8)
+			(Rnd) > 0.8 (Spider_Xd = Spider_Dir)
+			Else (Spider_Xd = 0)
+			(Rnd) > 0.95 (Spider_Yd < 0 (Spider_Yd Neg))
+			
+		)
+	)
+	Else (
+		Spider_Enabled == 1 (Time > Spider_Time ((Rnd) > 0.995 ($INIT_SPIDER)))
+	)
+)
+
+Define $UPDATE_SCORPION (
+	Scorpion_Y >= 0 (
+		PlayState S_Scorpion Is 0 (Play S_Scorpion 1)
+	
+		Scorpion_X + Scorpion_Xd
+		Scorpion_Xd > 0 (Scorpion_X Max MaxX_A Is 1 ($KILL_SCORPION))
+		Else (< 0 (Scorpion_X Min MinX_A Is 1 ($KILL_SCORPION)))
+		Int x = Scorpion_X - Scorpion_Xd
+		x > 0 (< ScrX ( 
+			Int col = x >> 3
+			Int row = Scorpion_Y >> 3
+			Int f = row * 30 + col
+			Field.f == ~BMP_shroom0 (Field.f = ~BMP_shroomP0)
+			Else (== ~BMP_shroom1 (Field.f = ~BMP_shroomP1))
+			Else (== ~BMP_shroom2 (Field.f = ~BMP_shroomP2))
+			Else (== ~BMP_shroom3 (Field.f = ~BMP_shroomP3))
+		))
+	)
+	Else (
+		Scorpion_Enabled == 1 (Time > Scorpion_Time ((Rnd) > 0.996 ($INIT_SCORPION)))
+	)
+)
+
+Define $UPDATE_SHOT(
+    Shot_State <> #SHOT_FLY (Return)
+
+	Shot_Y - 4 < 0 (Shot_State = 0)
+	Else (
+		Spider_Y >= 0 (
+			(Shot_X - Spider_X - 8 Abs) <= 8 (
+				(Shot_Y - Spider_Y Abs) <= 4 (
+					Explosion_X = Spider_X - 2
+					Explosion_Y = Spider_Y - 2
+					Explosion_X2 = 1
+					Explosion_Count = 4
+		
+					(Shooter_Y - Spider_Y Abs) <= 16 (Score_BMP = ~BMP_900 $ADD_SCORE 900)
+					Else (<= 32 (Score_BMP = ~BMP_600 $ADD_SCORE 600))
+					Else (Score_BMP = ~BMP_300 $ADD_SCORE 300)
+					Score_X = Spider_X
+					Score_Y = Spider_Y
+					Score_Time = Time + 1000
+					
+					Play S_Hit 1
+					$KILL_SPIDER
+					Play S_Hit2 1
+					Shot_State = 0
+					Return
+				)
+			)
+		)
+		
+		Scorpion_Y >= 0 (
+			(Shot_X - Scorpion_X - 8 Abs) <= 8 (
+				(Shot_Y - Scorpion_Y Abs) <= 4 (
+					Explosion_X = Scorpion_X - 4
+					Explosion_Y = Scorpion_Y
+					Explosion_X2 = 1
+					Explosion_Count = 4
+		
+					$ADD_SCORE 1000
+					Play S_Hit 1
+					$KILL_SCORPION
+					Play S_Hit2 1
+					Shot_State = 0
+					Return
+				)
+			)
+		)
+		
+		Flea_Yd >= 0 (
+			(Shot_X - Flea_X - 4 Abs) <= 8 (
+				(Shot_Y - Flea_Y Abs) <= 4 (
+					Flea_Yd == 2 (Flea_Yd = 4)
+					Else (
+						Explosion_X = Flea_X
+						Explosion_Y = Flea_Y
+						Explosion_Count = 4
+						
+						$ADD_SCORE 200
+						Play S_Hit 1
+						$KILL_FLEA
+						Play S_Hit2 1
+					)
+					Shot_State = 0
+					Return
+				)
+			)
+		)
+
+		Int f = (Shot_Y >> 3) * 30 + (Shot_X + 4 >> 3)
+		Field.f <> 0 (
+			Shot_State = 0
+			Field.f == ~BMP_shroom0 (Field.f = ~BMP_shroom1)
+			Else (== ~BMP_shroom1 (Field.f = ~BMP_shroom2))
+			Else (== ~BMP_shroom2 (Field.f = ~BMP_shroom3))
+			Else (== ~BMP_shroom3 (Field.f = 0 $ADD_SCORE 1))
+			Else (== ~BMP_shroomP0 (Field.f = ~BMP_shroomP1))
+			Else (== ~BMP_shroomP1 (Field.f = ~BMP_shroomP2))
+			Else (== ~BMP_shroomP2 (Field.f = ~BMP_shroomP3))
+			Else (== ~BMP_shroomP3 (Field.f = 0 $ADD_SCORE 1))
+		)
+		Else (
+			Int I = Centipede_MaxSize Step -1 To 0 (
+				Centipede_Type.I <> #DEAD (
+					(Centipede_X.I - Shot_X Abs) <= 4 (
+						(Centipede_Y.I - Shot_Y Abs) <= 4 (
+							Centipede_Type.I == #SINGLEHEAD ($ADD_SCORE 100)
+							Else (== #HEAD ($ADD_SCORE 100))
+							Else (== #BODY ($ADD_SCORE 10))
+							
+							Play S_Hit 1
+							Shot_State = #SHOT_HIT
+							ColIndex = I
+							Return
+						)
+					)
+				)
+			)
+		)
+	)
+)
+	
+Define $UPDATE_SHOOTER(
+	Shooter_Y >= 0 (
+		Int x = (Shooter_X + Shooter_Xd)  Min 8 Max ScrW
+		Int y = (Shooter_Y + Shooter_Yd)  Min MinH Max MaxH
+			
+		Int f = (y >> 3) * 30 + (x - 8 / 8)
+
+		Field.f == 0(
+			Shooter_X = x
+			Shooter_Y = y
+		)
+			
+		Shooter_Xd = 0 Shooter_Yd = 0
+
+		Spider_Y >= 0 (
+			(Shooter_X - Spider_X - 8 Abs) <= 8 ((Shooter_Y - Spider_Y Abs) <= 4(
+				$KILL_SHOOTER Return
+			))
+		)
+			
+		Scorpion_Y >= 0 (
+			(Shooter_X - Scorpion_X - 8 Abs) <= 8 ((Shooter_Y - Scorpion_Y Abs) <= 4(
+				$KILL_SHOOTER Return
+			))
+		)
+			
+		Flea_Yd >= 0 (
+			(Shooter_X - Flea_X - 8 Abs) <= 8 ((Shooter_Y - Flea_Y Abs) <= 4(
+				$KILL_SHOOTER Return
+			))
+		)
+
+		Int I = Centipede_MaxSize Step -1 To 0 (
+			Centipede_Type.I <> #DEAD (
+				(Shooter_X - Centipede_X.I - 8 Abs) <= 4 ((Shooter_Y - Centipede_Y.I Abs) <= 4 (
+					$KILL_SHOOTER Return
+				))
+			)
+		)
+	) 
+	Else (
+		Time > Shooter_Time ($INIT_SHOOTER)
+	)
+)
+
+Define $ADD_SCORE addScore(
+	Score + addScore
+	Score > HighScore (HighScore = Score)
+	
+	Score >= OneUpScore (
+		OneUpScore + 12000
+		Shooter_Lives + 1 Max 5
+	)
+)
+
+Define $COUNT_FIELD(
+	Score_Y = -1
+	Shot_State = 0
+	
+	Play 0 0
+	$DRAW
+	Int cCol = 0 Step 1 To 29 (
+		Int cRow = 30 Step -1 To 1 (
+			Int f = cRow * 30 + cCol
+			Field.f <> 0 (
+				Field.f <> ~BMP_shroom0 (
+					Field.f = ~BMP_shroom0
+					
+					SetXY (cCol * 8) (cRow * 8)
+					Play S_Count 1
+					Int N = 3 Step -1 To 0 (
+						Int bmp = N * 64 + ~BMP_explosion0
+						Bitmap ~BMP_space Bitmap ~BMP_shroom0 Bitmap bmp
+						Draw
+						Delay 12
+					)
+					Bitmap ~BMP_space Bitmap ~BMP_shroom0
+					$ADD_SCORE 5
+					$DRAW_BORDER
+					Draw
+					
+					Delay 75
+				)
+			)
+		)
+    )
+	Delay 2000
+)
+
+Define $DRAW(
+	ColorF 0
+	ColorB 0
+    Cls
+	
+	SetMode 0 ' drawing mode 'normal'
+
+	Int f = 30
+    Int row = 1 Step 1 To 30 (
+		Int col = 0 Step 1 To 29 (
+			Field.f <> 0 (SetXY (col * 8) (row * 8) Bitmap Field.f)
+			f + 1
+		)
+    )
+	
+	Shooter_Y > 0 (
+		Shooter_Lives >= 0 (
+			Shot_State == #SHOT_FLY (
+				SetXY Shot_X Shot_Y Bitmap ~BMP_shot
+			)
+			Else (  
+				SetXY (Shooter_X - 8) (Shooter_Y - 8 + 7) Bitmap ~BMP_shot
+			)
+			SetXY (Shooter_X - 8) (Shooter_Y) Bitmap ~BMP_shooter
+		)
+	)
+	
+	Spider_Y >= 0 (
+		SetSize 16 8
+		Int bmp = AnimCounter * 0.75 % 8 * 128 + ~BMP_spider0
+		SetXY Spider_X Spider_Y Bitmap bmp
+		SetSize 8 8
+	)
+	
+	Scorpion_Y >= 0 (
+		Scorpion_Xd > 0 (SetMode 4)
+		SetSize 16 8
+		bmp = AnimCounter * 0.75 % 4 * 128 + ~BMP_scorpion0
+		SetXY Scorpion_X Scorpion_Y Bitmap bmp
+		SetSize 8 8
+		SetMode 0
+	)
+	
+	Flea_Y >= 0 (
+		SetSize 9 8
+		bmp = AnimCounter * 0.75 % 4 * 72 + ~BMP_flea0
+		SetXY Flea_X Flea_Y Bitmap bmp
+		SetSize 8 8
+	)
+	
+	Score_Y >= 0 (
+		SetSize 11 5
+		(AnimCounter % 2) == 0 (Score_Y - 1)
+		SetXY Score_X Score_Y Bitmap Score_BMP
+		SetSize 8 8
+	)
+
+	Explosion_Y >= 0 (
+		bmp = Explosion_Count * 64 + ~BMP_explosion0
+		SetXY Explosion_X Explosion_Y Bitmap bmp
+		Explosion_X2 == 1 (x = Explosion_X + 8 SetXY x Explosion_Y Bitmap bmp)
+		(AnimCounter % 3) == 0 (
+			Explosion_Count - 1 < 0 (Explosion_Y = -1 Explosion_X2 = 0)
+		)
+	)
+
+	Int cHead = AnimCounter % 8 * 64 + ~BMP_centiHead0
+
+    Int I = Centipede_MaxSize Step -1 To 0 (
+		SetXY Centipede_X.I Centipede_Y.I
+		SetMode 0  										' default drawing mode
+		Centipede_Type.I <> #DEAD (
+			Centipede_Xd.I > 0 (SetMode 2)				' rotate 180°
+			Centipede_Poisoned.I == 0 (
+				Centipede_Yd.I < 0 (SetMode 1)			' rotate 90°
+				Else (> 0 (SetMode 3)) 					' rotate 270°
+			)	
+			
+			Centipede_Type.I == #SINGLEHEAD (Bitmap cHead Int animB = AnimCounter)
+			Else (== #HEAD ( Bitmap cHead animB = AnimCounter))
+			Else (== #BODY ( animB + 7 Int cBody = animB % 8 * 64 + ~BMP_centiBody0 Bitmap cBody ))
+		)
+    )	
+	
+	$DRAW_BORDER
+	SetMode 0
+	
+	Draw
+)
+
+Define $DRAW_BORDER(
+	' mask first and last row
+	ColorB 16
+	SetMode 0
+	$DRAW_TEXT ~TXT_MASKROW 0 0
+	$DRAW_TEXT ~TXT_MASKROW 0 31
+	$DRAW_NUMBER Score 1 0 4
+	$DRAW_NUMBER HighScore 13 0 4
+	
+	Int f = 6
+	Int I = 1 Step 1 To Shooter_Lives (
+		Field.f = ~BMP_shooter
+		f + 1
+    )
+	
+	f = 0
+	Int x = 0 Step 8 To scrX (
+		SetXY x 0 Bitmap Field.f
+		f + 1
+    )
+)
+
+Define $DRAW_TEXT text x y(
+	Int f = y * 30 + x
+	Int I = 0 Step 1 To 30 (
+		!text.I < 0 (Return)
+		Field.f = !text.I * 64 + ~BMP_TEXT
+		f + 1
+	)
+)
+
+Define $DRAW_NUMBER num x y digits(
+	Int f = y * 30 + x
+	Int d = digits
+    Int I = 0 Step 1 To digits (
+		Field.f = num Nth d * 64 + ~BMP_NUMBER
+		f + 1
+		d - 1
+    )
+)
+
+' text is represented as:
+' char-Nr: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36
+' char:    A B C D E F G H I J K  L  M  N  O  P  Q  R  S  T  U  V  W  X  Y  Z  0  1  2  3  4  5  6  7  8  9  _
+' -1       end-of-text
+	
+Define ~TXT_HIGHSCORES(7 8 6 7 36 18 2 14 17 4 18 -1) ' HIGH SCORES
+Define ~TXT_COIN(27 36 2 14 8 13 36 27 46 15 11 0 24 -1)' 1 COIN 1 PLAY
+Define ~TXT_CREDITS(2 17 4 3 8 19 18 36 27 -1) 'CREDITS 1
+Define ~TXT_BONUS(1 14 13 20 18 36 4 21 4 17 24 36 27 28 26 26 26 -1) 'BONUS EVERY 12000
+Define ~TXT_GAMEOVER(6 0 12 4 36 14 21 4 17 -1) ' GAME OVER
+Define ~TXT_NAME(0 0 0 -1)
+Define ~TXT_MASKROW(36 * 30 -1)
+
+Define ~BMP_shroom0(
+0 0 2 2 2 2 0 0
+0 2 3 3 3 3 2 0
+2 3 3 3 3 3 3 2
+2 3 3 3 3 3 3 2
+2 2 2 2 2 2 2 2
+0 0 2 3 3 2 0 0
+0 0 2 3 3 2 0 0
+0 0 2 2 2 2 0 0
+)
+Define ~BMP_shroom1(
+0 0 2 2 2 2 0 0
+0 2 3 3 3 3 2 0
+2 3 3 3 3 3 3 2
+2 3 3 3 3 3 3 2
+2 0 2 2 2 2 2 2
+0 0 2 3 3 2 0 0
+0 0 0 3 0 0 0 0
+0 0 0 0 0 0 0 0
+)
+Define ~BMP_shroom2(
+0 0 2 2 2 2 0 0
+0 2 3 3 3 3 2 0
+2 3 3 3 3 3 3 2
+2 3 3 3 3 3 3 2
+2 0 2 0 2 0 2 0
+0 0 2 0 0 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+)
+Define ~BMP_shroom3(
+0 0 2 2 2 2 0 0
+0 2 3 3 3 3 2 0
+2 3 3 0 3 3 3 2
+2 0 3 0 3 0 3 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+)
+Define ~BMP_shroomP0(
+0 0 3 3 3 3 0 0
+0 3 1 1 1 1 3 0
+3 1 1 1 1 1 1 3
+3 1 1 1 1 1 1 3
+3 3 3 3 3 3 3 3
+0 0 3 1 1 3 0 0
+0 0 3 1 1 3 0 0
+0 0 3 3 3 3 0 0
+)
+Define ~BMP_shroomP1(
+0 0 3 3 3 3 0 0
+0 3 1 1 1 1 3 0
+3 1 1 1 1 1 1 3
+3 1 1 1 1 1 1 3
+3 0 3 3 3 1 3 0
+0 0 3 1 1 3 0 0
+0 0 0 0 1 3 0 0
+0 0 0 0 3 0 0 0
+)
+Define ~BMP_shroomP2(
+0 0 3 3 3 3 0 0
+0 3 1 1 1 1 3 0
+0 1 1 1 1 1 1 3
+0 0 1 0 1 0 1 0
+0 0 0 0 3 0 0 0
+0 0 0 0 1 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+)
+Define ~BMP_shroomP3(
+0 0 3 3 3 3 0 0
+0 3 1 0 1 1 3 0
+0 0 1 0 1 0 0 0
+0 0 0 0 1 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+)
+Define ~BMP_centiHeadP(
+0 0 2 0 0 0 0 0 
+0 3 3 1 1 0 0 0
+1 3 3 1 1 1 0 0
+1 1 1 1 1 1 1 0
+1 1 1 1 1 1 1 0
+1 3 3 1 1 1 0 0
+0 3 3 1 1 0 0 0
+0 0 2 0 0 0 0 0
+)
+Define ~BMP_centiBodyP(
+0 0 2 0 0 0 0 0
+0 1 1 1 1 0 0 0
+1 1 1 1 1 1 0 0
+1 1 1 1 1 1 1 0
+1 1 1 1 1 1 1 0
+1 1 1 1 1 1 0 0
+0 1 1 1 1 0 0 0
+0 0 2 0 0 0 0 0
+)
+Define ~BMP_centiHead0(
+0 0 1 0 0 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 1 0 0 0 0 0
+
+0 1 0 0 0 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 1 0 0 0 0 0 0
+
+0 0 1 0 0 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 1 0 0 0 0 0
+
+0 0 0 1 0 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 0 1 0 0 0 0
+
+0 0 0 0 1 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 0 0 1 0 0 0
+
+0 0 0 0 0 1 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 0 0 0 1 0 0
+
+0 0 0 0 1 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 0 0 1 0 0 0
+
+0 0 0 1 0 0 0 0
+0 2 2 3 3 0 0 0
+3 2 2 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 2 2 3 3 3 0 0
+0 2 2 3 3 0 0 0
+0 0 0 1 0 0 0 0
+)
+Define ~BMP_centiBody0(
+0 0 1 0 0 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 1 0 0 0 0 0
+
+0 1 0 0 0 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 1 0 0 0 0 0 0
+
+0 0 1 0 0 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 1 0 0 0 0 0
+
+0 0 0 1 0 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 0 1 0 0 0 0
+
+0 0 0 0 1 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 0 0 1 0 0 0
+
+0 0 0 0 0 1 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 0 0 0 1 0 0
+
+0 0 0 0 1 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 0 0 1 0 0 0
+
+0 0 0 1 0 0 0 0
+0 3 3 3 3 0 0 0
+3 3 3 3 3 3 0 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 3 0
+3 3 3 3 3 3 0 0
+0 3 3 3 3 0 0 0
+0 0 0 1 0 0 0 0
+)
+Define ~BMP_flea0(
+0 0 0 1 1 1 0 0 0
+0 0 2 1 1 1 1 0 0
+0 2 2 1 1 1 1 1 0
+1 1 1 1 1 1 1 1 1
+1 1 1 3 0 3 1 1 1
+0 0 0 3 0 3 0 1 1
+0 0 0 3 0 3 0 3 0
+0 0 3 0 3 0 0 0 3
+
+0 0 0 1 1 1 0 0 0
+0 0 2 1 1 1 1 0 0
+0 2 2 1 1 1 1 1 0
+1 1 1 1 1 1 1 1 1
+1 1 1 0 3 0 1 1 1
+0 0 0 3 0 0 3 1 1
+0 0 3 0 0 3 0 0 3
+0 0 3 0 3 0 0 3 0
+
+0 0 0 1 1 1 0 0 0
+0 0 2 1 1 1 1 0 0
+0 2 2 1 1 1 1 1 0
+1 1 1 1 1 1 1 1 1
+1 1 1 0 3 0 1 1 1
+0 0 0 3 0 3 0 1 1
+0 0 0 3 0 0 3 0 3
+0 0 0 0 3 0 0 3 0
+
+0 0 0 1 1 1 0 0 0
+0 0 2 1 1 1 1 0 0
+0 2 2 1 1 1 1 1 0
+1 1 1 1 1 1 1 1 1
+1 1 1 3 0 3 1 1 1
+0 0 0 3 0 3 0 1 1
+0 0 0 3 0 0 3 0 3
+0 0 0 0 3 0 3 0 3
+)
+Define ~BMP_spider0(
+0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0
+0 1 0 1 0 0 0 0 0 0 0 1 0 1 0 0
+1 0 0 0 1 0 0 3 0 0 1 0 0 0 1 0
+0 0 0 0 0 1 2 3 2 1 0 0 0 0 0 0
+0 0 1 0 0 2 2 3 2 2 0 0 1 0 0 0
+0 1 0 1 0 3 3 3 3 3 0 1 0 1 0 0
+1 0 0 0 1 3 2 2 2 3 1 0 0 0 1 0
+0 0 0 0 0 0 3 2 3 0 0 0 0 0 0 0
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 1 1 1 0 0 0 0 0 0 0 1 1 1 0 0
+1 0 0 0 1 0 0 3 0 0 1 0 0 0 1 0
+0 0 0 0 0 1 2 3 2 1 0 0 0 0 0 0
+0 0 0 0 0 2 2 3 2 2 0 0 0 0 0 0
+0 1 1 1 0 3 3 3 3 3 0 1 1 1 0 0
+1 0 0 0 1 3 2 2 3 3 1 0 0 0 1 0
+0 0 0 0 0 0 3 2 3 0 0 0 0 0 0 0
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 1 1 1 0 0 3 0 0 1 1 1 0 0 0
+0 1 0 0 0 1 2 3 2 1 0 0 0 1 0 0
+1 0 0 0 0 2 2 3 2 2 0 0 0 0 1 0
+0 0 1 1 0 3 3 3 3 3 0 1 1 0 0 0
+0 1 0 0 1 3 3 2 2 3 1 0 0 1 0 0
+1 0 0 0 0 0 3 2 3 0 0 0 0 0 1 0
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0
+0 0 0 1 1 1 2 3 2 1 1 1 0 0 0 0
+0 0 1 0 0 2 2 3 2 2 0 0 1 0 0 0
+0 1 0 0 1 3 3 3 3 3 1 0 0 1 0 0
+1 0 0 0 1 3 3 2 3 3 1 0 0 0 1 0
+0 0 1 1 0 0 3 2 3 0 0 1 1 0 0 0
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 1 1 1 0 0 3 0 0 1 1 1 0 0 0
+0 1 0 0 0 1 2 3 2 1 0 0 0 1 0 0
+1 0 0 0 0 2 2 3 2 2 0 0 0 0 1 0
+0 0 1 1 0 3 3 3 3 3 0 1 1 0 0 0
+0 1 0 0 1 3 2 2 2 3 1 0 0 1 0 0
+1 0 0 0 0 0 3 2 3 0 0 0 0 0 1 0
+
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 1 1 1 0 0 0 0 0 0 0 1 1 1 0 0
+1 0 0 0 1 0 0 3 0 0 1 0 0 0 1 0
+0 0 0 0 0 1 2 3 2 1 0 0 0 0 0 0
+0 0 0 0 0 2 2 3 2 2 0 0 0 0 0 0
+0 1 1 1 0 3 3 3 3 3 0 1 1 1 0 0
+1 0 0 0 1 3 2 2 3 3 1 0 0 0 1 0
+0 0 0 0 0 0 3 2 3 0 0 0 0 0 0 0
+
+0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0
+0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0
+0 0 1 0 1 0 0 3 0 0 1 0 1 0 0 0
+0 1 0 0 0 1 2 3 2 1 0 0 0 1 0 0
+1 0 0 1 0 2 2 3 2 2 0 1 0 0 0 0
+0 0 0 1 0 3 3 3 3 3 0 1 0 0 0 0
+0 0 1 0 1 3 3 2 2 3 1 0 1 0 0 0
+0 1 0 0 0 0 3 2 3 0 0 0 0 1 0 0
+
+0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0
+0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0
+0 0 0 1 1 0 0 3 0 0 1 1 0 0 0 0
+0 0 1 0 0 1 2 3 2 1 0 0 1 0 0 0
+0 1 0 0 0 2 2 3 2 2 0 0 0 1 0 0
+1 0 0 1 0 3 3 3 3 3 0 1 0 0 1 0
+0 0 0 1 1 3 3 2 3 3 1 1 0 0 0 0
+0 0 1 0 0 0 3 2 3 0 0 0 1 0 0 0
+)
+Define ~BMP_scorpion0(
+1 0 1 0 0 2 1 2 0 0 1 0 1 0 0 0
+0 1 0 0 2 2 1 2 2 0 0 1 0 0 0 0
+0 1 1 0 0 1 1 1 0 0 1 1 0 1 1 1
+0 0 1 1 1 1 1 1 1 1 1 0 0 1 0 1
+0 0 0 0 0 1 1 1 1 0 0 0 0 0 0 1
+0 0 0 0 0 1 1 1 1 0 0 0 0 0 1 1
+0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1
+0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 0
+
+1 0 1 0 0 2 1 2 0 0 1 0 1 0 0 0
+0 1 0 0 2 2 1 2 2 0 0 1 0 0 0 0
+0 1 1 0 0 1 1 1 0 0 1 1 0 1 1 1
+0 0 1 1 0 1 1 1 0 1 1 0 0 1 0 1
+0 0 0 1 1 1 1 1 1 1 0 0 0 1 0 0
+0 0 0 0 0 1 1 1 1 0 0 0 1 1 0 0
+0 0 0 0 0 1 1 1 1 1 1 1 1 1 0 0
+0 0 0 0 0 0 1 1 1 1 1 1 1 0 0 0
+
+1 0 1 0 2 1 2 0 1 0 1 0 0 0 0 0
+0 1 0 2 2 1 2 2 0 1 0 0 0 0 0 0
+0 1 1 0 1 1 1 0 1 1 0 0 0 0 1 1
+0 0 1 1 1 1 1 1 1 0 0 0 0 1 0 1
+0 0 0 0 1 1 1 1 0 0 0 0 1 1 0 1
+0 0 0 0 1 1 1 1 0 0 1 1 1 0 0 1
+0 0 0 0 1 1 1 1 1 1 1 1 0 0 1 0
+0 0 0 0 0 1 1 1 1 1 1 0 0 0 0 0
+
+1 0 1 0 2 1 2 0 1 0 1 0 0 0 0 0
+0 1 0 2 2 1 2 2 0 1 0 0 1 0 0 0
+0 1 1 0 1 1 1 0 1 1 0 1 0 1 1 0
+0 0 1 1 1 1 1 1 1 0 0 1 0 0 1 1
+0 0 0 0 1 1 1 1 0 0 0 0 1 0 0 1
+0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 1
+0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1
+0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 0
+)
+Define ~BMP_shot(
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+0 0 0 1 1 0 0 0
+)
+Define ~BMP_shooter(
+0 0 0 1 1 0 0 0
+0 0 1 1 1 1 0 0
+0 2 2 1 1 2 2 0
+1 2 2 1 1 2 2 1
+1 1 1 1 1 1 1 1
+0 1 1 1 1 1 1 0
+0 0 1 1 1 1 0 0
+0 0 1 1 1 1 0 0
+)
+Define ~BMP_explosion0(
+0 1 0 3 0 0 0 0
+2 0 3 0 1 2 0 2
+0 0 0 0 0 0 0 0
+3 0 0 0 0 0 3 0
+0 1 0 0 0 0 0 3
+0 1 0 0 0 0 1 0
+2 0 3 0 0 0 0 3
+0 1 0 1 2 0 2 0
+
+0 3 0 0 3 0 3 0
+0 2 1 3 0 2 3 0
+3 1 0 0 3 0 0 1
+0 2 0 0 0 0 2 0
+3 0 2 0 0 2 0 2
+0 1 0 3 0 3 1 0
+2 3 2 0 0 0 3 0
+0 3 0 3 1 2 0 0
+
+0 3 1 3 2 3 0 0
+3 0 3 3 3 3 3 2
+3 3 3 1 3 1 3 0
+2 3 1 0 0 3 3 3
+3 3 0 0 0 3 0 0
+3 2 2 3 2 3 3 3
+2 3 3 3 3 3 3 0
+0 1 3 0 3 0 0 1
+
+0 0 3 2 3 0 2 0
+0 3 3 3 3 3 2 3
+1 3 3 3 3 3 3 1
+1 3 3 1 1 3 3 3
+1 3 3 1 1 3 3 1
+1 3 3 3 3 3 3 3
+1 3 3 2 3 3 3 1
+0 3 0 2 0 3 0 0
+
+0 0 2 2 0 2 0 0
+0 1 3 2 3 3 0 0
+0 3 3 3 3 3 2 0
+2 3 3 3 3 3 1 0
+2 3 3 0 3 3 3 0
+1 3 3 3 3 3 1 3
+0 1 3 3 2 3 1 0
+0 0 1 2 0 2 0 3
+)
+Define ~BMP_300(
+1 1 1 0 1 1 1 0 1 1 1
+0 0 1 0 1 0 1 0 1 0 1
+1 1 1 0 1 0 1 0 1 0 1
+0 0 1 0 1 0 1 0 1 0 1
+1 1 1 0 1 1 1 0 1 1 1
+)
+Define ~BMP_600(
+1 1 1 0 1 1 1 0 1 1 1
+1 0 0 0 1 0 1 0 1 0 1
+1 1 1 0 1 0 1 0 1 0 1
+1 0 1 0 1 0 1 0 1 0 1
+1 1 1 0 1 1 1 0 1 1 1
+)
+Define ~BMP_900(
+1 1 1 0 1 1 1 0 1 1 1
+1 0 1 0 1 0 1 0 1 0 1
+1 1 1 0 1 0 1 0 1 0 1
+0 0 1 0 1 0 1 0 1 0 1
+1 1 1 0 1 1 1 0 1 1 1
+)
+Define ~BMP_TEXT(
+0 0 0 0 0 0 0 0
+0 0 2 2 2 0 0 0
+0 2 2 0 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 2 2 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 0 2 2 2 2 0 0
+0 2 2 0 0 2 2 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+0 2 2 0 0 2 2 0
+0 0 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 0 0
+2 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 2 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+
+0 0 0 0 0 0 0 0
+0 0 2 2 2 2 0 0
+0 2 2 0 0 2 2 0
+2 2 0 0 0 0 0 0
+2 2 0 0 2 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 0 0 2 2 0
+0 0 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 2 2 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+2 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 0 0 0 0 2 2 0
+0 0 0 0 0 2 2 0
+0 0 0 0 0 2 2 0
+0 0 0 0 0 2 2 0
+0 0 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 2 2 0 0
+2 2 0 2 2 0 0 0
+2 2 2 2 0 0 0 0
+2 2 2 2 2 0 0 0
+2 2 0 2 2 2 0 0
+2 2 0 0 2 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 2 0 2 2 2 0
+2 2 2 2 2 2 2 0
+2 2 2 2 2 2 2 0
+2 2 0 2 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 2 0 0 2 2 0
+2 2 2 2 0 2 2 0
+2 2 2 2 2 2 2 0
+2 2 0 2 2 2 2 0
+2 2 0 0 2 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 0 0 0
+2 2 0 0 0 0 0 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 2 2 2 2 0
+2 2 0 0 2 2 0 0
+0 2 2 2 2 0 2 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 2 2 0 0
+2 2 2 2 2 0 0 0
+2 2 0 2 2 2 0 0
+2 2 0 0 2 2 2 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 0 0 0
+2 2 0 0 2 2 0 0
+2 2 0 0 0 0 0 0
+0 2 2 2 2 2 0 0
+0 0 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 2 0 2 2 2 0
+0 2 2 2 2 2 0 0
+0 0 2 2 2 0 0 0
+0 0 0 2 0 0 0 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 2 0 2 2 0
+2 2 2 2 2 2 2 0
+2 2 2 2 2 2 2 0
+2 2 2 0 2 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 0 2 2 0
+2 2 2 0 2 2 2 0
+0 2 2 2 2 2 0 0
+0 0 2 2 2 0 0 0
+0 2 2 2 2 2 0 0
+2 2 2 0 2 2 2 0
+2 2 0 0 0 2 2 0
+
+0 0 0 0 0 0 0 0
+2 2 0 0 2 2 0 0
+2 2 0 0 2 2 0 0
+2 2 0 0 2 2 0 0
+0 2 2 2 2 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 2 0
+0 0 0 0 2 2 2 0
+0 0 0 2 2 2 0 0
+0 0 2 2 2 0 0 0
+0 2 2 2 0 0 0 0
+2 2 2 0 0 0 0 0
+2 2 2 2 2 2 2 0
+)
+Define ~BMP_NUMBER(
+0 0 0 0 0 0 0 0
+0 0 2 2 2 0 0 0
+0 2 0 0 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 0 0 2 0 0
+0 0 2 2 2 0 0 0
+
+0 0 0 0 0 0 0 0
+0 0 2 2 0 0 0 0
+0 2 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+2 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+0 0 0 0 2 2 2 0
+0 0 0 2 2 2 0 0
+0 2 2 2 2 0 0 0
+2 2 2 0 0 0 0 0
+2 2 2 2 2 2 2 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 2 2 0
+0 0 0 0 2 2 0 0
+0 0 0 2 2 0 0 0
+0 0 2 2 2 2 0 0
+0 0 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 0 0 2 2 2 0 0
+0 0 2 2 2 2 0 0
+0 2 2 0 2 2 0 0
+2 2 2 2 2 2 2 0
+0 0 0 0 2 2 0 0
+0 0 0 0 2 2 0 0
+0 0 0 0 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+0 0 0 0 0 2 2 0
+0 0 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 0 2 2 2 2 0 0
+0 2 2 0 0 0 0 0
+2 2 0 0 0 0 0 0
+2 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+2 2 2 2 2 2 2 0
+2 2 0 0 0 2 2 0
+0 0 0 0 2 2 0 0
+0 0 0 2 2 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+0 0 2 2 0 0 0 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 0 0 0
+2 2 0 0 0 2 0 0
+2 2 2 0 0 2 0 0
+0 2 2 2 2 0 0 0
+2 0 0 2 2 2 2 0
+2 0 0 0 0 2 2 0
+0 2 2 2 2 2 0 0
+
+0 0 0 0 0 0 0 0
+0 2 2 2 2 2 0 0
+2 2 0 0 0 2 2 0
+2 2 0 0 0 2 2 0
+0 2 2 2 2 2 2 0
+0 0 0 0 0 2 2 0
+0 0 0 0 2 2 0 0
+0 2 2 2 2 0 0 0
+)
+Define ~BMP_space(16*64) 
+IDE-OPTIONS
+VERSION=1.0
+CARRET=2600

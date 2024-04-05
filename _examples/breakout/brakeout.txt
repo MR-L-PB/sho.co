@@ -1,0 +1,509 @@
+Float BALL_X(5)
+Float BALL_Y(5)
+Float BALL_XD(5)
+Float BALL_YD(5)
+Int BALL_OUT(5)
+Int BALL_HIT(5)
+Int BALL_TIME(5)
+Int BALL_IDLE(5)
+
+Int PlayField(324) ' current playing field
+
+
+Sound(
+	S_Block "_snd\block.wav"
+	S_Hit "_snd\hit.wav"
+	S_Pad "_snd\pad.wav"
+	S_Wall "_snd\wall.wav"
+	S_Dead "_snd\dead.wav"
+)
+
+Int (LEVEL F_SOURCE F_TARGET BLOCKCOUNT MAX_BALLS BALL_COUNT LIVES COLID)
+Float (PAD_X PAD_XD PAD_SPEED)
+
+SCR_W = 144
+SCR_H = 144
+
+Screen SCR_W SCR_H
+
+$NEWGAME
+
+:LOOP
+    TIME = #TIME
+
+    TIME > PAD_TIME(
+		PAD_TIME + 20
+
+		Input Is 0 (PAD_XD * 0.9)
+		Else (
+			Key #KEY_ESCAPE Is 1 (End)
+			Key #KEY_LEFT Is 1 (PAD_XD - PAD_SPEED)
+			Key #KEY_RIGHT Is 1 (PAD_XD + PAD_SPEED)
+		)
+		$MOVE_PAD
+    )
+
+    I = MAX_BALLS - 1
+    Step -1 To 0(
+		BALL_IDLE.I > TIME (BALL_X.I = PAD_X | BALL_Y.I = PAD_Y - 8)
+		Else (BALL_TIME.I < TIME (BALL_TIME.I = TIME + BALL_SPEED | $MOVE_BALL | REDRAW_TIME = 0))
+    )
+    
+    REDRAW_TIME < TIME (REDRAW_TIME = TIME + 10 | $DRAW)
+    Else (Delay 10)
+
+    ' increase level every 10 hits
+    HITCOUNT >= 10 (HITCOUNT = 0 | BALL_SPEED - 1 Min 10)
+    
+    Jmp :LOOP
+
+Define $START_BALL(
+    ' init values
+    BALL_X.I = PAD_X
+    BALL_Y.I = PAD_Y - 8
+    BALL_YD.I = -1
+    BALL_OUT.I = 0
+    BALL_IDLE.I = #TIME + 2000
+    BALL_SPEED = 15
+    PAD_XD = 0
+    HITCOUNT = 0
+)
+
+Define $TEST_PAD (
+    BALL_OUT.I == 0 (
+		BX = BALL_X.I - PAD_X | Abs
+		< 15 (
+			BY = BALL_Y.I- PAD_Y
+			> -5 (BALL_OUT.I = 1 Return) ' if bottom of ball is below top of pad, the ball is out
+
+			+ 4 | Abs
+			< 4 (BALL_XD.I = BALL_XD.I + PAD_XD Min -1 Max 1
+			 BALL_YD.I = BALL_YD.I Abs Neg
+			 BALL_Y.I = PAD_Y - 8 Play S_Pad 1)			 
+		)
+    )
+)
+
+Define $MOVE_BALL(
+    BALL_OUT.I < 0 (Return)
+    BALL_Y.I > 144 (
+		' ball left the lower border
+		BALL_OUT.I = -1
+		BALL_COUNT - 1
+
+		BALL_COUNT < 1 (
+			BALL_COUNT = 0
+			LIVES - 1
+			Play S_Dead  1
+			LIVES < 1 ($GAME_OVER)
+			Else ($START_BALL)
+		)
+		Return
+    )
+
+    BALL_XD.I == 0 (BALL_XD.I = 0.1)
+    BALL_X.I + BALL_XD.I
+    BALL_Y.I + BALL_YD.I
+    BALL_X.I Min 8 Is 1 (BALL_XD.I Abs Play S_Wall 1)
+    BALL_X.I Max 128 Is 1 (BALL_XD.I Abs Neg Play S_Wall 1)
+    BALL_Y.I Min 8 Is 1 (BALL_YD.I Abs Play S_Wall 1)
+    
+    $TEST_PAD ' test ball / pad collision
+)
+
+Define $MOVE_PAD(
+    PAD_X + PAD_XD
+    Min 16  Is 1 (PAD_XD = 0)
+    Max 120 Is 1 (PAD_XD = 0)
+)
+
+Define $DRAW(
+	Int(I ROW COL COLINFO)
+    ColorF 0 Cls
+    COLINFO = #COLLISION
+    
+    ' draw pad
+	SetXY (PAD_X - 8) (PAD_Y) Bitmap ~CHR_PAD_L
+	MoveXY 8 0 Bitmap ~CHR_PAD_M
+	MoveXY 8 0 Bitmap ~CHR_PAD_R
+
+    LIVES > 0 (
+			' draw ball
+		I = MAX_BALLS - 1 Step -1 To 0(
+			BALL_OUT.I > -1 (
+				BALL_HIT.I = 0
+				!COLID = I + 1
+				SetXY BALL_X.I BALL_Y.I Bitmap ~CHR_BALL
+			)
+		)
+    )
+
+    f = 0
+    !COLID = 0
+
+    ROW = 0 Step 1 To 17 (
+        COL = 0 Step 1 To 17 (
+            CELL = PlayField.f
+
+            CELL > 0 (
+                SetXY (COL * 8) (ROW * 8)
+
+                !COLINFO = 0 ' clear collision info
+                CELL ==  1 (Bitmap ~CHR_STONE1)
+                Else (==  2 (Bitmap ~CHR_STONE2))
+                Else (==  3 (Bitmap ~CHR_STONE3))
+                Else (==  4 (Bitmap ~CHR_WALL))
+				Else (>= 14 (Bitmap ~CHR_BLINK PlayField.f = 4))
+				Else (>   4 (Bitmap ~CHR_BLINK PlayField.f = CELL + 1))
+				
+				LIVES > 0 (
+					!COLINFO > 0 (
+						' collision occured!
+						I = !COLINFO - 1
+
+						BALL_OUT.I == 0 (
+							BALL_HIT.I == 0 (
+								BALL_HIT.I = 1
+								HITCOUNT + 1
+								
+								Float CELLX = BALL_X.I / 8
+								Float CELLY = BALL_Y.I / 8
+								XD = COL - CELLX Abs
+								YD = ROW - CELLY Abs
+
+								' collision response
+								YD < XD (BALL_XD.I Abs CELLX < COL (BALL_XD.I Neg))
+								Else    (BALL_YD.I Abs CELLY < ROW (BALL_YD.I Neg))
+					
+								CELL == 1  (PlayField.f = 0 | SCORE + 20 | BLOCKCOUNT - 1 Play S_Hit 1)
+								Else (== 2 (PlayField.f = 1 | SCORE + 10 Play S_Hit 1))
+								Else (== 3 (PlayField.f = 2 | SCORE + 5 Play S_Hit 1))
+								Else (== 4 (PlayField.f = 5 Play S_Block 1))
+							)
+						)
+					)
+				)
+			)
+            
+			f + 1
+		)
+    )
+
+    LIVES > 0 (
+        ' no blocks left -> start next level
+        BLOCKCOUNT == 0 (
+			LEVEL == ~FIELD_01 (LEVEL = ~FIELD_02)
+			Else (== ~FIELD_02 (LEVEL = ~FIELD_01))
+
+			$INIT_FIELD
+			
+			BALL_COUNT = MAX_BALLS
+			I = MAX_BALLS - 1
+			Step -1 To 0 ($START_BALL BALL_IDLE.I = I * 500 + 2000 + #TIME)
+        )
+    
+		' draw sore and nr. of lives
+		CY = SCR_H - 6
+		SetSize 21 5
+		SetXY 16 CY Bitmap ~CHR_LIVES
+		
+		SetSize 22 5
+		SetXY 74 CY Bitmap ~CHR_SCORE
+	
+		$DRAW_NR LIVES 1 35
+		$DRAW_NR SCORE 6 95
+		SetSize 8 8
+    )
+    
+    Draw
+)
+
+Define $DRAW_NR nr digits pos(
+    x = digits * 5 + pos
+
+	cx = x
+	cy = SCR_H - 6
+
+    SetSize 3 5	' set char size to 3 x 5 pixels
+    digits Step -1 To 0 (
+        n = nr % 10 Floor ' get last digit of the number
+        NC = n * 15 + ~CHR_DIGITS	' address of digit
+		SetXY cx cy Bitmap NC | cx - 5	' draw digit
+        nr / 10	' next digit
+    )  
+    SetSize 8 8	' reset char size
+)
+
+Define $INIT_FIELD(
+    ' copy field of current level to playing field
+    F_SOURCE = LEVEL
+    BLOCKCOUNT = 0
+    Int I = 0 Step 1 To (18 * 18 - 1)(
+        PlayField.I  = !F_SOURCE.I
+		!F_SOURCE.I > 0 (!F_SOURCE.I < 4 (BLOCKCOUNT + 1))
+    )
+)
+
+Define $NEWGAME(
+	PAD_X = SCR_W / 2 - 4
+	PAD_Y = 130
+	PAD_SPEED = 0.2
+
+	MAX_BALLS = 3
+	BALL_COUNT = MAX_BALLS
+
+	I = MAX_BALLS - 1
+	Step -1 To 0 (
+		BALL_X.I = PAD_X
+
+		d = I % 3
+		d == 0 (BALL_XD.I = -0.5 | BALL_Y.I = PAD_Y - 8)
+		Else (== 1 (BALL_XD.I = -0.0))
+		Else (== 2 (BALL_XD.I = 0.5))
+
+		$START_BALL
+
+		BALL_YD.I = -1
+		BALL_OUT.I = 0
+		BALL_TIME.I = 0
+		BALL_IDLE.I = I * 500 + 2000 + #TIME
+	)
+
+	COLID = #COLLISIONID
+
+	LIVES = 3
+	SCORE = 0
+	LEVEL = ~FIELD_01
+
+	$INIT_FIELD
+)
+
+Define $GAME_OVER(
+    Delay 1000	
+    Int N = 18 * 18 - 1
+    Int I = 0 Step 1 To N (
+		' fill a row with "WALL"
+		Int A = I % 18 == 0 (
+			PushC
+			$DRAW Delay 80 ' row is full -> display it 
+			PopC
+		)
+		PlayField.I = 14		
+    )
+    $DRAW
+	$DRAW
+    Delay 3000
+    $NEWGAME
+)
+
+' ---- DATA SECTION ----
+' 1=STONE 2=STONE_HALF 3=STONE_FULL 4=WALL
+Define ~FIELD_01(
+    04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04
+    04 00 00 00 00 00 00 01 01 01 01 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 01 01 01 00 00 00 00 01 01 01 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 01 01 01 01 00 00 01 01 01 01 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 01 01 01 00 00 00 00 00 00 00 00 00 00 01 01 01 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04)
+    
+    
+Define ~FIELD_02(
+    04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 01 00 00 00 01 01 00 00 01 01 00 00 00 01 00 04
+    04 00 01 00 00 00 00 00 00 00 00 00 00 00 00 01 00 04
+    04 00 01 01 01 01 01 01 01 01 01 01 01 01 01 01 00 04
+    04 00 01 00 00 00 00 00 01 01 00 00 00 00 00 01 00 04
+    04 00 01 01 01 01 01 01 01 01 01 01 01 01 01 01 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 04 00 00 00 04 01 01 01 01 01 01 04 00 00 00 04 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 04 04 04 04 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04
+    04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04)
+
+Define ~CHR_STONE1(
+    16 01 01 01 01 01 16 16
+    01 16 15 16 15 16 15 16
+    01 15 16 15 16 15 01 16
+    01 16 01 16 01 16 06 16
+    01 01 16 01 16 01 06 16
+    01 16 01 16 01 16 06 16
+    16 01 01 01 01 01 16 16
+    16 16 16 16 16 16 16 16)
+    
+Define ~CHR_STONE2(
+    16 01 01 01 01 01 16 16
+    01 01 01 01 01 01 01 16
+    01 01 01 01 01 01 01 16
+    01 01 01 01 01 01 06 16
+    01 01 16 01 16 01 06 16
+    01 16 01 16 01 16 06 16
+    16 01 01 01 01 01 16 16
+    16 16 16 16 16 16 16 16)
+    
+Define ~CHR_STONE3(
+    16 01 01 01 01 01 16 16
+    01 01 01 01 01 01 01 16
+    01 01 01 01 01 01 01 16
+    01 01 01 01 01 01 06 16
+    01 01 01 01 01 01 06 16
+    01 01 01 01 01 01 06 16
+    16 01 01 06 06 06 16 16
+    16 16 16 16 16 16 16 16)
+
+Define ~CHR_WALL(
+    09 09 09 09 09 09 09 09
+    09 15 15 15 15 15 15 09
+    09 15 16 16 16 16 15 09
+    09 15 16 15 15 16 15 09
+    09 15 16 15 15 16 15 09
+    09 15 16 16 16 16 15 09
+    09 15 15 15 15 15 15 09
+    09 09 09 09 09 09 09 09)
+
+Define ~CHR_BLINK(
+    09 09 09 09 09 09 09 09
+    09 01 01 01 01 01 01 09
+    09 01 01 01 01 01 01 09
+    09 01 01 01 01 01 01 09
+    09 01 01 01 01 01 01 09
+    09 01 01 01 01 01 01 09
+    09 01 01 01 01 01 01 09
+    09 09 09 09 09 09 09 09)
+
+Define ~CHR_BALL(
+    00 00 00 00 00 00 00 00
+    00 00 15 01 01 15 00 00
+    00 15 01 04 04 01 15 00
+    00 01 04 04 03 02 01 00
+    00 01 04 04 03 02 01 00
+    00 15 01 03 02 01 15 00
+    00 00 15 01 01 15 00 00
+    00 00 00 00 00 00 00 00)
+    
+Define ~CHR_PAD_L(
+    00 01 01 01 01 01 01 01
+    01 06 06 06 06 06 06 06
+    01 06 04 04 04 04 04 04
+    01 04 15 15 15 15 15 15
+    00 01 01 01 01 01 01 01
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00)
+
+Define ~CHR_PAD_M(
+    01 01 01 01 01 01 01 01
+    06 06 06 06 06 06 06 06
+    04 04 04 04 04 04 04 04
+    15 15 15 15 15 15 15 15
+    01 01 01 01 01 01 01 01
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00)
+
+Define ~CHR_PAD_R(
+	01 01 01 01 01 01 01 00
+    06 06 06 06 06 06 06 01
+    04 04 04 04 04 04 15 01
+    15 15 15 15 15 15 15 01
+    01 01 01 01 01 01 01 00
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 0)
+
+Define ~CHR_LIVES(
+    01 00 00 00    01 00 00    01 00 01 00    01 01 01 00    15 01 01 00 00 00
+    01 00 00 00    01 00 00    01 00 01 00    01 00 00 00    01 00 00 00 00 01
+    01 00 00 00    01 00 00    01 00 01 00    01 01 00 00    15 01 15 00 00 00
+    01 00 00 00    01 00 00    15 01 15 00    01 00 00 00    00 00 01 00 00 01
+    01 01 01 00    01 00 00    00 01 00 00    01 01 01 00    01 01 15 00 00 00)
+
+Define ~CHR_SCORE(
+    15 01 01 00    15 01 15 00    15 01 15 00    01 01 15 00    01 01 01 00 00 00
+    01 00 00 00    01 00 01 00    01 00 01 00    01 00 01 00    01 00 00 00 00 01
+    15 01 15 00    01 00 00 00    01 00 01 00    01 01 15 00    01 01 00 00 00 00
+    00 00 01 00    01 00 01 00    01 00 01 00    01 00 01 00    01 00 00 00 00 01
+    01 01 15 00    15 01 15 00    15 01 15 00    01 00 01 00    01 01 01 00 00 00)
+
+
+Define ~CHR_DIGITS(
+    15  1 15
+     1  0  1
+     1  0  1 
+     1  0  1
+    15  1 15
+    
+    15  1  0
+     1  1  0
+     0  1  0
+     0  1  0
+     0  1  0
+    
+     1  1 15
+     0  0  1
+     0  1 15
+     1 15  0
+     1  1  1
+     
+     1  1 15
+     0  0  1
+     0  1 15
+     0  0  1
+     1  1 15
+     
+     1  0  1
+     1  0  1
+     1  1  1
+     0  0  1
+     0  0  1
+     
+     1  1  1
+     1  0  0
+     1  1 15
+     0  0  1
+     1  1 15
+     
+    15  1  1
+     1  0  0
+     1  1 15
+     1  0  1
+    15  1 15
+     
+     1  1  1
+     0  0  1
+     0  1 15
+     0  1  0
+     0  1  0
+     
+    15  1 15
+     1  0  1
+    15  1 15
+     1  0  1
+    15  1 15
+     
+    15  1 15
+     1  0  1
+    15  1  1
+     0  0  1
+     1  1 15) 
+IDE-OPTIONS
+VERSION=1.0
+CARRET=386
