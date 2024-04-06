@@ -126,7 +126,7 @@
         <div class="description"></div>
     </div>
 	<div class="container">
-        <div class="command blue">A = 0 Step 1 To 10 (...)</div>
+        <div class="command blue">A = 0 [A + 1 > 10 (break)]</div>
         <div class="description">loop from 0 to 10 with a step value of 1</div>
     </div>
 	
@@ -191,7 +191,7 @@
 
 	<!--#####################################################################################################-->
     <h3>Program Flow</h3>
-    <div class="container">
+	<div class="container">
         <div class="command blue bold">Jmp adr</div>
         <div class="description">jump to address 'adr'</div>
     </div>
@@ -199,14 +199,9 @@
         <div class="command blue bold">JmpF flag adr</div>
         <div class="description">jump to address 'adr' if Flag-Register equals 'flag'</div>
     </div>
-    <div class="container">
-        <div class="command blue bold">Count step</div>
-        <div class="description">set the Step value of the loop. The current variable is incremented or decremented by this value.</div>
-    </div>
 	<div class="container">
-        <div class="command blue bold">To limit (...)</div>
-        <div class="description">execute the code inside the brackets until the loop variable reaches the 'limit' <br> 
-		</div>
+        <div class="command blue bold">Loop(...)</div>
+        <div class="description">loop code inside brackets until a 'Break' occurs</div>
     </div>
 	<div class="container">
         <div class="command blue bold">Break level</div>
@@ -275,14 +270,6 @@
     <div class="container">
         <div class="command blue bold">PushV / PopV</div>
         <div class="description">push / pop V-Register</div>
-    </div>
-	<div class="container">
-        <div class="command blue bold">PushC / PopC</div>
-        <div class="description">push / pop C-Register</div>
-    </div>
-	<div class="container">
-        <div class="command blue bold">PushX / PopX</div>
-        <div class="description">push / pop X-Register</div>
     </div>
 	<div class="container">
 		<div class="command blue bold">PushI / PopI</div>
