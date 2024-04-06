@@ -158,6 +158,7 @@ Enumeration ENUM_TOKENTYPE
 	#T_CHAR
 	#T_PERIOD
 	#T_NUMBER
+	#T_LOOP
 	#T_BRACKET_OPEN
 	#T_BRACKET_CLOSE
 	#T_NEWLINE
@@ -229,8 +230,6 @@ Enumeration ENUM_OPCODE
 	#OP_SGN
 	#OP_JMP
 	#OP_JMF
-	#OP_STP
-	#OP__TO
 	#OP_IFL
 	#OP_ILO
 	#OP_IGR
@@ -250,10 +249,6 @@ Enumeration ENUM_OPCODE
 	#OP_POV
 	#OP_PUF
 	#OP_POF
-	#OP_PUC
-	#OP_POC
-	#OP_PUX
-	#OP_POX
 	#OP_BMS
 	#OP_BMM
 	#OP_BXY
@@ -368,8 +363,6 @@ Structure CPU
 	IP.i                                ; instruction pointer
 	SP.i                                ; stack pointer
 	V.i									; V-Register
- 	X.i									; X-Register
- 	C.d									; C-Register
 	FLAGS.i								; flag register
 EndStructure
 
@@ -806,6 +799,7 @@ Procedure IDE_Init()
 	Next
 	
 	Keyword_Add(#T_DEFINE, "Define")
+	Keyword_Add(#T_LOOP, "Loop")
 	Keyword_Add(#T_INT, "Int")
 	Keyword_Add(#T_FLOAT, "Float")
 	Keyword_Add(#T_CHAR, "Char")
@@ -1835,8 +1829,9 @@ Procedure System_Update_Monitor(ip, direction = 0)
 		Next
 		
 		Select op
-			Case #OP_IFL, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE, #OP__TO
- 				SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(*CPU\IP)), 3)
+			Case #OP_IFL, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE
+				SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(*CPU\IP)), 3)
+				code + FSTR(*CPU\RAM(*CPU\IP))
 				*CPU\IP + 1
 		EndSelect
 		
@@ -1847,7 +1842,8 @@ Procedure System_Update_Monitor(ip, direction = 0)
 				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 1 + paramNr)
 			EndIf
 		Next
-		SetGadgetItemText(#g_Monitor, index, code, 4)
+		
+		SetGadgetItemText(#g_Monitor, index, code , 4)
 		SetGadgetItemData(#g_Monitor, index, System_LineNrByIP(opIP))
 		
 		If isData
@@ -2493,13 +2489,7 @@ Procedure Parse_Sub(*sub.SUB, readState)
 	Protected *childSub.SUB
 	Protected *token.TOKEN
 	Protected nSubParams, prevIP
-	
-	If readState & #READ_LOOP
-		; if call from inside loop -> save the loop registers
-		Parse_WriteI(#OP_PUC, #SYM_OPCODE)
-		Parse_WriteI(#OP_PUX, #SYM_OPCODE)
-	EndIf
-	
+		
 	*childSub = Parse_FindSub(*sub, UCase(TokenText(Parser\curToken)))
 	If *childSub = #Null
 		System_Error(Parser\curLine, "Sub not defined: '" + TokenText(Parser\curToken) + "'")
@@ -2554,12 +2544,6 @@ Procedure Parse_Sub(*sub.SUB, readState)
 						Parse_SubVar(*childSub, *childSub\vars(), #OP_POP)
 					Until PreviousElement(*childSub\vars()) = #Null
 				EndIf
-			EndIf
-			
-			If readState & #READ_LOOP
-				; if call from inside loop -> restore the loop registers
-				Parse_WriteI(#OP_POX, #SYM_OPCODE)
-				Parse_WriteI(#OP_POC, #SYM_OPCODE)
 			EndIf
 			
 		EndIf
@@ -3084,7 +3068,7 @@ Procedure Parse_First(*sub.SUB, readState, depth)
 				
 			Case #T_STRING
 				
-				Debug TokenText(Parser\curToken)
+				;Debug TokenText(Parser\curToken)
 				
 		EndSelect
 	Wend
@@ -3100,10 +3084,10 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 	Protected *curOpcode.OPCODE
 	Protected tab.s = Space(depth * 4)
 	Protected setVar.s
-	
-	If (readState & #READ_LOOP) = 0
-		ClearList(Parser\brakeList())
-	EndIf
+
+; 	If (readState & #READ_LOOP) = 0
+; 		ClearList(Parser\brakeList())
+; 	EndIf
 	
 	While Parse_NextToken()
 		
@@ -3116,14 +3100,14 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 			Case 0
 				
 				Break
-				
+								
 			Case #T_BRACKET_OPEN
 
 				parser\tokenIndex - 1
 				Parse_Expression(*sub, @opcode(#OP_GET), 0, readState)
-				
+								
 			Case #T_BRACKET_CLOSE
-				
+								
 				If LastElement(Parser\bracketList())
 					DeleteElement(Parser\bracketList())
 				Else
@@ -3246,17 +3230,43 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				Else
 					System_Error(Parser\curLine, "Return without Call")
 				EndIf
-								
+				
+			Case #T_LOOP
+				
+				If Parse_NextToken(#T_BRACKET_OPEN, #True)
+					opcodeIP = *CPU\IP
+					*curOpcode = Parser\curToken\opcode
+					Parser\curOpcode = #Null;*curOpcode
+					Parser\curIP = *CPU\IP
+					System\adrMode = 0
+					
+					Parse_AddBracket()
+					
+					Parser\loopDepth + 1
+					If Parse_Main(*sub, readState | #READ_LOOP, depth + 1)
+						Parser\loopDepth - 1
+						
+						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+						Parse_WriteI(opcodeIP, #SYM_ADDRESS) ; jump back to loop start
+						
+						ForEach Parser\brakeList()
+							If Parser\loopDepth <= Parser\brakeList()\data
+								SETVAL(Parser\brakeList()\adr, *CPU\IP) ; set exit address
+								DeleteElement(Parser\brakeList())
+							EndIf
+						Next
+						
+					EndIf
+					
+				EndIf
+
 			Case #T_BREAK
 				
 				If readState & #READ_LOOP
 					If AddElement(Parser\brakeList())
+						Parser\brakeList()\data = Parser\loopDepth
 						If Parse_NextToken(#T_NUMBER)
-							If Parser\curToken\value > Parser\loopDepth
-								System_Error(parser\curLine, "the breaklevel exceeds the loop count")
-							Else
-								Parser\brakeList()\data = Parser\curToken\value
-							EndIf
+							Parser\brakeList()\data - Min(Parser\curToken\value, Parser\loopDepth)
 						EndIf
 						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
 						Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS) ; placeholder for the exit address
@@ -3294,54 +3304,7 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				System\adrMode = 0
 				
 				Select *curOpcode\ID
-						
-					Case #OP_STP
-						
-						If (readState & #READ_LOOP)
-							Parse_WriteI(#OP_PUC, #SYM_OPCODE) ; push current loop state on
-							Parse_WriteI(#OP_PUX, #SYM_OPCODE) ; the stack (for nested loops)
-						EndIf
-						Parse_Expression(*sub, *curOpcode, 0, readState)
-						
-					Case #OP__TO
-						
-						If Parse_Expression(*sub, *curOpcode, 0, readState)
-							*dataSect = Parser\curDataSect
-							prevIP = *CPU\IP
-							If Parse_WriteI(0, #SYM_ADDRESS) ; placeholder for the "exit address"
-								
-								If Parse_NextToken(#T_BRACKET_OPEN, #True)
-									Parse_AddBracket()
-									
-									Parser\loopDepth + 1
-									If Parse_Main(*sub, readState | #READ_LOOP, depth + 1)
-										Parser\loopDepth - 1
-										
-										Parse_WriteI(#OP_JMP, #SYM_OPCODE)
-										Parse_WriteI(opcodeIP, #SYM_ADDRESS)
-										ForEach Parser\brakeList()
-											SETVAL(Parser\brakeList()\adr, *CPU\IP)
-										Next
-										SETVAL(prevIP, *CPU\IP)
-										If readState & #READ_LOOP
-											Parse_WriteI(#OP_POX, #SYM_OPCODE) ; pop previous loop state from
-											Parse_WriteI(#OP_POC, #SYM_OPCODE) ; the stack (for nested loops)
-										EndIf
-										
-										ForEach Parser\brakeList()
-											Parser\brakeList()\data - 1
-											If Parser\brakeList()\data <= 0
-												DeleteElement(Parser\brakeList())
-											EndIf
-										Next
-									EndIf
-								EndIf
-							EndIf
-							If *dataSect
-								*dataSect\endAdr = *CPU\IP
-							EndIf
-						EndIf
-						
+												
 					Case #OP_IFL, #OP_ILO, #OP_IGR, #OP_ILE, #OP_IGE, #OP_IEQ, #OP_INE
 						
 						If Parse_Expression(*sub, *curOpcode, 0, readState)
@@ -3470,8 +3433,8 @@ Procedure Parse_Start(*file.FILE, parseFull = #True)
 		
 		System\programSize = *CPU\IP
 		
-		If LastElement(Parser\bracketList())
-			If (System\state & #STATE_SILENT) = 0
+		If (System\state & #STATE_SILENT) = 0
+			If ListSize(Parser\bracketList()) > 0
 				System_Error(Parser\bracketList()\lineNr, "missing closing bracket")
 			EndIf
 		EndIf
@@ -3953,24 +3916,6 @@ Repeat
 					If *CPU\FLAGS = valF1
 						System\nextIP = valF2
 					EndIf
-				Case #OP_STP
-					*CPU\X = *CPU\V
-					GETVAL_READ(System\nextIP, *CPU\C)
-					ValF1 = *CPU\RAM(*CPU\X)
-					SETVAL(*CPU\X, valF1 - *CPU\C)
-				Case #OP__TO
-					GETVAL(*CPU\X, valF1)
-					GETVAL_READ(System\nextIP, valF2)
-					
-					If *CPU\C < 0 And (valF1 + *CPU\C) < valF2
-						GETVAL(System\nextIP, System\nextIP)
-					ElseIf *CPU\C > 0 And (valF1 + *CPU\C) > valF2
-						GETVAL(System\nextIP, System\nextIP)
-					Else
-						valF1 + *CPU\C
-						SETVAL(*CPU\X, valF1)
-						System\nextIP + 1
-					EndIf
 				Case #OP_JMP
 					GETVAL_READ(System\nextIP, valI1)
 					System\nextIP = valI1
@@ -4001,18 +3946,6 @@ Repeat
 				Case #OP_POF
 					; pop flags
 					POP(*CPU\FLAGS)
-				Case #OP_PUC
-					; push C Register
-					PUSH(*CPU\C)
-				Case #OP_POC
-					; pop C Register
-					POP(*CPU\C)
-				Case #OP_PUX
-					; push X Register
-					PUSH(*CPU\X)
-				Case #OP_POX
-					; pop X Register
-					POP(*CPU\X)
 				Case #OP_PUV
 					; push V Register
 					PUSH(*CPU\V)
@@ -4478,8 +4411,6 @@ DataSection
 	Data.i #OP_INE, 1, 3 : Data.s "INE,<>"
 	Data.i #OP_JMP, 1, 2 : Data.s "JMP,Jmp"
 	Data.i #OP_JMF, 2, 3 : Data.s "JMF,JmpF"
-	Data.i #OP_STP, 1, 2 : Data.s "STP,Step"
-	Data.i #OP__TO, 1, 3 : Data.s "TO,To"
 	Data.i #OP_PSH, 1, 2 : Data.s "PSH,Push"
 	Data.i #OP_POP, 1, 2 : Data.s "POP,Pop"
 	Data.i #OP_PUI, 0, 1 : Data.s "PUI,PushI"
@@ -4490,10 +4421,6 @@ DataSection
 	Data.i #OP_POV, 0, 1 : Data.s "POV,PopV"
 	Data.i #OP_PUF, 0, 1 : Data.s "PUF,PushF"
 	Data.i #OP_POF, 0, 1 : Data.s "POF,PopF"
-	Data.i #OP_PUX, 0, 1 : Data.s "PUX,PushX"
-	Data.i #OP_POX, 0, 1 : Data.s "POX,PopX"
-	Data.i #OP_PUC, 0, 1 : Data.s "PUC,PushC"
-	Data.i #OP_POC, 0, 1 : Data.s "POC,PopC"
 	Data.i #OP_ADS, 1, 2 : Data.s "ADS,AddSP"
 	Data.i #OP_SCR, 2, 3 : Data.s "SCR,Screen"
 	Data.i #OP_CLS, 0, 1 : Data.s "CLS,Cls"
@@ -4520,9 +4447,10 @@ DataSection
 EndDataSection
 ;}
 ; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; CursorPosition = 3004
-; FirstLine = 2970
+; CursorPosition = 1833
+; FirstLine = 1824
 ; Folding = ---------------
+; Markers = 3263
 ; EnableXP
 ; DPIAware
 ; DllProtection
