@@ -103,11 +103,11 @@ Loop(
 )
 
 Define $SET_COLOR a b c d(
-	Int Color = #COLOR
-	!Color.0 = a
-	!Color.1 = b
-	!Color.2 = c
-	!Color.3 = d
+	Int color = #COLOR
+	!color.0 = a
+	!color.1 = b
+	!color.2 = c
+	!color.3 = d
 )
 
 Define $INIT_GAME(
@@ -133,20 +133,20 @@ Define $INIT_LEVEL(
 	
 	Centipede_Size = 11
 	
-	Level == 00 (Spider_Enabled = 0 Flea_Enabled = 0 Scorpion_Enabled = 0 Centipede_Heads = 0 Centipede_Speed = 16 $SET_COLOR 0 12648447 255 65280)
-	Else (== 01 (Spider_Enabled = 1 Centipede_Heads = 1 Centipede_Speed = 16 $SET_COLOR 0 49407 12648192 12583167))
-	Else (== 02 (Flea_Enabled = 1 Centipede_Heads = 2 Centipede_Speed = 15 $SET_COLOR 0 12648192 65535 255))
-	Else (== 03 (Scorpion_Enabled = 1 Centipede_Heads = 3 Centipede_Speed = 15 $SET_COLOR 0 12648192 16711680 49407))
-	Else (== 04 (Centipede_Heads = 4 Centipede_Speed = 14 $SET_COLOR 0 65535 16711935 12583167))
-	Else (== 05 (Centipede_Heads = 5 Centipede_Speed = 14 $SET_COLOR 0 16711680 49407 12648192))
-	Else (== 06 (Centipede_Speed = 13 $SET_COLOR 0 65280 12583167 65535))
-	Else (== 07 (Centipede_Speed = 13 $SET_COLOR 0 65535 255 12648192))
-	Else (== 08 (Centipede_Heads = 2 Centipede_Speed = 13 $SET_COLOR 0 255 12648192 12583167))
-	Else (== 09 (Centipede_Heads = 3 Centipede_Speed = 12 $SET_COLOR 0 12648192 16711680 49407))
-	Else (== 10 (Centipede_Heads = 4 Centipede_Speed = 12 $SET_COLOR 0 12648447 255 12648192))
-	Else (== 11 (Centipede_Speed = 12 $SET_COLOR 0 255 12583167 65280))
-	Else (== 12 (Centipede_Speed = 10 $SET_COLOR 0 65535 16711680 255))
-	Else (== 13 (Centipede_Speed = 10 $SET_COLOR 0 65280 12583167 12648447))
+	Level == 00 ($SET_COLOR 0 RGB(255 255 192) RGB(255   0   0) RGB(  0 255   0) Spider_Enabled = 0 Flea_Enabled = 0 Scorpion_Enabled = 0 Centipede_Heads = 0 Centipede_Speed = 16)
+	Else (== 01 ($SET_COLOR 0 RGB(255 192   0) RGB(  0 255 192) RGB(255   0 192) Spider_Enabled = 1 Centipede_Heads = 1 Centipede_Speed = 16))
+	Else (== 02 ($SET_COLOR 0 RGB(  0 255 192) RGB(255 255   0) RGB(255   0   0) Flea_Enabled = 1 Centipede_Heads = 2 Centipede_Speed = 15))
+	Else (== 03 ($SET_COLOR 0 RGB(  0 255 192) RGB(  0   0 255) RGB(255 192   0) Scorpion_Enabled = 1 Centipede_Heads = 3 Centipede_Speed = 15))
+	Else (== 04 ($SET_COLOR 0 RGB(255 255   0) RGB(255   0 255) RGB(255   0 192) Centipede_Heads = 4 Centipede_Speed = 14))
+	Else (== 05 ($SET_COLOR 0 RGB(  0   0 255) RGB(255 192   0) RGB(  0 255 192) Centipede_Heads = 5 Centipede_Speed = 14))
+	Else (== 06 ($SET_COLOR 0 RGB(  0 255   0) RGB(255   0 192) RGB(255 255   0) Centipede_Speed = 13))
+	Else (== 07 ($SET_COLOR 0 RGB(255 255   0) RGB(255   0   0) RGB(  0 255 192) Centipede_Speed = 13))
+	Else (== 08 ($SET_COLOR 0 RGB(255   0   0) RGB(  0 255 192) RGB(255   0 192) Centipede_Heads = 2 Centipede_Speed = 13))
+	Else (== 09 ($SET_COLOR 0 RGB(  0 255 192) RGB(  0   0 255) RGB(255 192   0) Centipede_Heads = 3 Centipede_Speed = 12))
+	Else (== 10 ($SET_COLOR 0 RGB(255 255 192) RGB(255   0   0) RGB(  0 255 192) Centipede_Heads = 4 Centipede_Speed = 12))
+	Else (== 11 ($SET_COLOR 0 RGB(255   0   0) RGB(255   0 192) RGB(  0 255   0) Centipede_Speed = 12))
+	Else (== 12 ($SET_COLOR 0 RGB(255 255   0) RGB(  0   0 255) RGB(255   0   0) Centipede_Speed = 10))
+	Else (== 13 ($SET_COLOR 0 RGB(  0 255   0) RGB(255   0 192) RGB(255 255 192) Centipede_Speed = 10))
 
 	Time = #TIME
 	Centipede_NewHead = 0
@@ -157,11 +157,11 @@ Define $INIT_LEVEL(
 )
 
 Define $INIT_FIELD(
-	I = 30 * MaxRow + 8 - 1 
+	i = 30 * MaxRow + 8 - 1 
 	Loop(
-		(Rnd) > 0.93 (Field.I = ~BMP_shroom0)
-		Else (Field.I = 0)
-		I - 1 < 1 (Break)
+		(Rnd) > 0.93 (Field.i = ~BMP_shroom0)
+		Else (Field.i = 0)
+		i - 1 < 1 (Break)
     )
 )
 
@@ -191,31 +191,31 @@ Define $INIT_CENTIPEDE(
 	Centipede_MaxSize = Centipede_Size + Centipede_Heads
 	Centipede_Step = 0
 
-	Int I = 0 Loop(Field.I = 0 I + 1 > 29 (Break))
-	I = 30 Loop(
-		Centipede_Type.I = #DEAD
-		Centipede_X.I = 0
-		Centipede_Y.I = 0
-		Centipede_Xd.I = 0
-		Centipede_Yd.I = 0
-		Centipede_DirY.I = 0
-		Centipede_Poisoned.I = 0
-		I - 1 < 0 (Break)
+	Int i = 0 Loop(Field.i = 0 i + 1 > 29 (Break))
+	i = 30 Loop(
+		Centipede_Type.i = #DEAD
+		Centipede_X.i = 0
+		Centipede_Y.i = 0
+		Centipede_Xd.i = 0
+		Centipede_Yd.i = 0
+		Centipede_DirY.i = 0
+		Centipede_Poisoned.i = 0
+		i - 1 < 0 (Break)
 	)
-	I = Centipede_MaxSize Loop(
-		Centipede_X.I = (Rnd * 29 Floor * 8)
-		Centipede_Type.I = #SINGLEHEAD
-		Centipede_DirY.I = 1
-		(Rnd) < 0.5 (Centipede_Xd.I = -1) Else (Centipede_Xd.I = 1)
-		Centipede_Yd.I = 1
-		I - 1 < Centipede_Size (Break)
+	i = Centipede_MaxSize Loop(
+		Centipede_X.i = (Rnd * 29 Floor * 8)
+		Centipede_Type.i = #SINGLEHEAD
+		Centipede_DirY.i = 1
+		(Rnd) < 0.5 (Centipede_Xd.i = -1) Else (Centipede_Xd.i = 1)
+		Centipede_Yd.i = 1
+		i - 1 < Centipede_Size (Break)
 	)
 	Centipede_Type.Centipede_Size = #HEAD
 	Centipede_X.Centipede_Size = Centipede_Xd.Centipede_Size Min 0 + 14 * 8
-	I = Centipede_Size - 1 Loop(
-		Centipede_Type.I = #BODY
-		Centipede_X.I = Centipede_X.Centipede_Size
-		I - 1 < 0 (Break)
+	i = Centipede_Size - 1 Loop(
+		Centipede_Type.i = #BODY
+		Centipede_X.i = Centipede_X.Centipede_Size
+		i - 1 < 0 (Break)
 	)
 	Centipede_Delay = Time + 2000
 )
@@ -224,15 +224,15 @@ Define $INIT_HEAD(
 	Centipede_Heads < 6 (
 		Centipede_Heads + 1
 		Centipede_MaxSize = Centipede_Size + Centipede_Heads
-		Int I = Centipede_MaxSize
+		Int i = Centipede_MaxSize
 		
-		(Rnd) < 0.5 (Int x = -1 Centipede_Xd.I = 1) Else (x = 30 Centipede_Xd.I = -1)
-		Centipede_Type.I = #SINGLEHEAD
-		Centipede_X.I = x * 8
-		Centipede_Y.I = MaxRow * 8
-		Centipede_Yd.I = 0
-		Centipede_DirY.I = 1
-		Centipede_Poisoned.I = 0
+		(Rnd) < 0.5 (Int x = -1 Centipede_Xd.i = 1) Else (x = 30 Centipede_Xd.i = -1)
+		Centipede_Type.i = #SINGLEHEAD
+		Centipede_X.i = x * 8
+		Centipede_Y.i = MaxRow * 8
+		Centipede_Yd.i = 0
+		Centipede_DirY.i = 1
+		Centipede_Poisoned.i = 0
 	)
 )
 	
@@ -303,8 +303,8 @@ Define $GAME_OVER(
 	
 	Int name = ~TXT_NAME
 
-	Int Score = (Rnd * 7000) Floor + 10000
-	HighScore < Score (Int firstRow = 4)
+	Int score = (Rnd * 7000) Floor + 10000
+	HighScore < score (Int firstRow = 4)
 	Else(
 		!name.0 = 24 'Y
 		!name.1 = 14' O
@@ -330,81 +330,81 @@ Define $GAME_OVER(
 )
 
 Define $SPLIT_CENTIPEDE(
-	Int I = ColIndex
+	Int i = ColIndex
 	
 	' turn the next field into a mushroom
-    Int col = (Centipede_X.I >> 3 + Centipede_Xd.I Min 0 Max 29)
-	Int f = Centipede_Y.I >> 3 * 30 + col
+    Int col = (Centipede_X.i >> 3 + Centipede_Xd.i Min 0 Max 29)
+	Int f = Centipede_Y.i >> 3 * 30 + col
 	Int s = Shooter_Y >> 3 * 30 + (Shooter_X >> 3)
 	f <> s (Field.f = ~BMP_shroom0) ' don't place a shroom on the Shooter (it might get stuck!)
 
 	' turn the previous segment into a head
-    I = ColIndex - 1 Min 0
-    Centipede_Type.I <> #BODY (I = ColIndex)
-    Centipede_Type.I = #HEAD
+    i = ColIndex - 1 Min 0
+    Centipede_Type.i <> #BODY (i = ColIndex)
+    Centipede_Type.i = #HEAD
 	
 	' test if it's a single head
-	I == 0 (Centipede_TYPE.I = #SINGLEHEAD) Else (Int N = I - 1 Centipede_Type.N <> #BODY (Centipede_Type.I = #SINGLEHEAD))
+	i == 0 (Centipede_TYPE.i = #SINGLEHEAD) Else (Int n = i - 1 Centipede_Type.n <> #BODY (Centipede_Type.i = #SINGLEHEAD))
 	
-'	 test if next head is single too
-	N = ColIndex + 1 Max Centipede_MaxSize
-	Centipede_Type.N == #HEAD (Centipede_Type.N = #SINGLEHEAD)
+	' test if next head is single too
+	n = ColIndex + 1 Max Centipede_MaxSize
+	Centipede_Type.n == #HEAD (Centipede_Type.n = #SINGLEHEAD)
 	
-	N = ColIndex + 1 Loop(
-		Centipede_Poisoned.I = 0
-		Centipede_Type.N == #HEAD (Centipede_DirY.I = Centipede_DirY.N) Else (Break)
-		N + 1 > Centipede_MaxSize (Break)
+	n = ColIndex + 1 Loop(
+		Centipede_Poisoned.i = 0
+		Centipede_Type.n == #HEAD (Centipede_DirY.i = Centipede_DirY.n) Else (Break)
+		n + 1 > Centipede_MaxSize (Break)
 	)
-	N = ColIndex Loop(
-		Centipede_Type.N == #BODY (Centipede_Poisoned.I = 0) Else (Break)
-		N - 1 < 0 (Break)
+	n = ColIndex Loop(
+		Centipede_Type.n == #BODY (Centipede_Poisoned.i = 0) Else (Break)
+		n - 1 < 0 (Break)
 	)
 	
 	' remove the shot segment
-	I = ColIndex
-    Centipede_Type.I = #DEAD
+	i = ColIndex
+    Centipede_Type.i = #DEAD
 	
-	Explosion_X = Centipede_X.I
-	Explosion_Y = Centipede_Y.I
+	Explosion_X = Centipede_X.i
+	Explosion_Y = Centipede_Y.i
 	Explosion_Count = 4
     Shot_State = 0
 )
 
-Define $MOVE_CENTIPEDE I(
+Define $MOVE_CENTIPEDE i(
 	' if the head hits a mushroom or the border, change the horizontal direction and move up or down, according to the
 	' current vertical direction (unless it is poisoned, then the horizontal movement is ignored).
 
-	Int col = Centipede_X.I >> 3
-	Int row = Centipede_Y.I >> 3
+	Int col = Centipede_X.i >> 3
+	Int row = Centipede_Y.i >> 3
 	
 	Int yd = 0
-	Centipede_Poisoned.I == 0 (
-		yd = Centipede_Yd.I
-		Centipede_yd.I = 0
-		col + Centipede_Xd.I < 0 (Centipede_Yd.I = Centipede_DirY.I)
-		Else (> 29 (Centipede_Yd.I = Centipede_DirY.I))
+	Centipede_Poisoned.i == 0 (
+		yd = Centipede_Yd.i
+		Centipede_yd.i = 0
+		col + Centipede_Xd.i < 0 (Centipede_Yd.i = Centipede_DirY.i)
+		Else (> 29 (Centipede_Yd.i = Centipede_DirY.i))
 		Else (
 			Int f = row * 30 + col
 			Field.f > 0 (
-				== ~BMP_shroomP0 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1)
-				Else (== ~BMP_shroomP1 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
-				Else (== ~BMP_shroomP2 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
-				Else (== ~BMP_shroomP3 (Centipede_Poisoned.I = 1 Centipede_Yd.I = 1))
-				Else (Centipede_Yd.I = Centipede_DirY.I)
+				== ~BMP_shroomP0 (Centipede_Poisoned.i = 1 Centipede_Yd.i = 1)
+				Else (== ~BMP_shroomP1 (Centipede_Poisoned.i = 1 Centipede_Yd.i = 1))
+				Else (== ~BMP_shroomP2 (Centipede_Poisoned.i = 1 Centipede_Yd.i = 1))
+				Else (== ~BMP_shroomP3 (Centipede_Poisoned.i = 1 Centipede_Yd.i = 1))
+				Else (Centipede_Yd.i = Centipede_DirY.i)
 			)
 		)
 	)
 	
-	Centipede_Xd.I == 0 (Centipede_Xd.I = 1)
-	Centipede_y.I < 8 (Centipede_Yd.I = 1 Centipede_DirY.I = 1) ' make sure the centipede doesn't get stuck in the first row!
-	Else (Centipede_y.I > MaxH (Centipede_Y.I = 0))
+	Centipede_Xd.i == 0 (Centipede_Xd.i = 1)
+	Centipede_y.i < 8 (Centipede_Yd.i = 1 Centipede_DirY.i = 1) ' make sure the centipede doesn't get stuck in the first row!
+	Else (Centipede_y.i > MaxH (Centipede_Y.i = 0))
 	
-	yd == 0 ( Centipede_Yd.I <> 0 (
-		Centipede_Xd.I Neg
-		row < MaxRow (Centipede_DirY.I  = 1 Centipede_Yd.I < 0 (Centipede_NewHead = 1))
+	yd == 0 ( Centipede_Yd.i <> 0 (
+		Centipede_Xd.i Neg
+		row < MaxRow (Centipede_DirY.i  = 1 Centipede_Yd.i < 0 (Centipede_NewHead = 1))
 		row > 28 (
-			Centipede_DirY.I = -1
-			Centipede_Poisoned.I = 0
+			Centipede_DirY.i = -1
+			Centipede_Poisoned.i = 0
 		)
 	))
 )
@@ -413,18 +413,18 @@ Define $UPDATE_CENTIPEDE(
 	Time < Centipede_Delay (Return)
 	
 	' move centipede 1 pixel in x or y direction or 2 pixels if it's a single head
-    Int I = Centipede_MaxSize Loop(
-		Centipede_Type.I <> #DEAD (
-			Int xd = Centipede_Xd.I
-			Int yd = Centipede_Yd.I
-			Centipede_Type.I == #SINGLEHEAD (xd * 2 yd * 2)
-			yd == 0 (Centipede_X.I + xd)
+    Int i = Centipede_MaxSize Loop(
+		Centipede_Type.i <> #DEAD (
+			Int xd = Centipede_Xd.i
+			Int yd = Centipede_Yd.i
+			Centipede_Type.i == #SINGLEHEAD (xd * 2 yd * 2)
+			yd == 0 (Centipede_X.i + xd)
 			Else (
-				Centipede_Y.I + yd
-				Centipede_Poisoned.I <> 0 (Centipede_X.I + xd)
+				Centipede_Y.i + yd
+				Centipede_Poisoned.i <> 0 (Centipede_X.i + xd)
 			)
 		)
-		I - 1 < 0 (Break)
+		i - 1 < 0 (Break)
     )
 	
 	Int cStep = Centipede_Step + 1 % 8 == 0(
@@ -433,9 +433,9 @@ Define $UPDATE_CENTIPEDE(
 	
 	' every 4 steps... move the single heads
 	cStep = Centipede_Step + 1 % 8 == 4(
-		I = 0 Loop(
-			Centipede_Type.I == #SINGLEHEAD ($MOVE_CENTIPEDE I)
-			I + 1 > Centipede_MaxSize (Break)
+		i = 0 Loop(
+			Centipede_Type.i == #SINGLEHEAD ($MOVE_CENTIPEDE i)
+			i + 1 > Centipede_MaxSize (Break)
 		)
 	)
 
@@ -446,27 +446,27 @@ Define $UPDATE_CENTIPEDE(
 	
 	' copy the direction of each segment to the next segment.
 	Int I1 = 0
-	I = 0 Loop(
+	i = 0 Loop(
 		I1 + 1
-		Centipede_Type.I == #BODY (
+		Centipede_Type.i == #BODY (
 			Centipede_Type.I1 <> #DEAD (
 				Centipede_Type.I1 <> #SINGLEHEAD (
-					Centipede_Yd.I = Centipede_Yd.I1
-					Centipede_Xd.I = Centipede_Xd.I1
-					Centipede_Poisoned.I = Centipede_Poisoned.I1
-					Centipede_DirY.I = Centipede_DirY.I1
+					Centipede_Yd.i = Centipede_Yd.I1
+					Centipede_Xd.i = Centipede_Xd.I1
+					Centipede_Poisoned.i = Centipede_Poisoned.I1
+					Centipede_DirY.i = Centipede_DirY.I1
 				)
 			)
 		)
-		I + 1 > Centipede_MaxSize (Break)
+		i + 1 > Centipede_MaxSize (Break)
 	)
 	
 	Centipede_Dead = 1
-	I = Centipede_MaxSize Loop(
-		Centipede_Type.I <> #DEAD (Centipede_Dead = 0)
-		Centipede_Type.I == #HEAD ($MOVE_CENTIPEDE I)
-		Else (== #SINGLEHEAD ($MOVE_CENTIPEDE I))
-		I - 1 < 0 (Break)
+	i = Centipede_MaxSize Loop(
+		Centipede_Type.i <> #DEAD (Centipede_Dead = 0)
+		Centipede_Type.i == #HEAD ($MOVE_CENTIPEDE i)
+		Else (== #SINGLEHEAD ($MOVE_CENTIPEDE i))
+		i - 1 < 0 (Break)
 	)
 	Centipede_Dead == 1 ($INIT_LEVEL Play S_Clear 1)
 	Else (Centipede_NewHead == 1 (Time > Centipede_NewHeadTime (Centipede_NewHeadTime = Time + 10000 (Rnd) > 0.5 ($INIT_HEAD))))
@@ -622,22 +622,22 @@ Define $UPDATE_SHOT(
 			Else (== ~BMP_shroomP3 (Field.f = 0 $ADD_SCORE 1))
 		)
 		Else (
-			Int I = Centipede_MaxSize Loop(
-				Centipede_Type.I <> #DEAD (
-					(Centipede_X.I - Shot_X Abs) <= 4 (
-						(Centipede_Y.I - Shot_Y Abs) <= 4 (
-							Centipede_Type.I == #SINGLEHEAD ($ADD_SCORE 100)
+			Int i = Centipede_MaxSize Loop(
+				Centipede_Type.i <> #DEAD (
+					(Centipede_X.i - Shot_X Abs) <= 4 (
+						(Centipede_Y.i - Shot_Y Abs) <= 4 (
+							Centipede_Type.i == #SINGLEHEAD ($ADD_SCORE 100)
 							Else (== #HEAD ($ADD_SCORE 100))
 							Else (== #BODY ($ADD_SCORE 10))
 							
 							Play S_Hit 1
 							Shot_State = #SHOT_HIT
-							ColIndex = I
+							ColIndex = i
 							Return
 						)
 					)
 				)
-				I - 1 < 0 (Break)
+				i - 1 < 0 (Break)
 			)
 		)
 	)
@@ -675,13 +675,13 @@ Define $UPDATE_SHOOTER(
 			))
 		)
 
-		Int I = Centipede_MaxSize Loop(
-			Centipede_Type.I <> #DEAD (
-				(Shooter_X - Centipede_X.I - 8 Abs) <= 4 ((Shooter_Y - Centipede_Y.I Abs) <= 4 (
+		Int i = Centipede_MaxSize Loop(
+			Centipede_Type.i <> #DEAD (
+				(Shooter_X - Centipede_X.i - 8 Abs) <= 4 ((Shooter_Y - Centipede_Y.i Abs) <= 4 (
 					$KILL_SHOOTER Return
 				))
 			)
-			I - 1 < 0 (Break)
+			i - 1 < 0 (Break)
 		)
 	) 
 	Else (
@@ -714,12 +714,12 @@ Define $COUNT_FIELD(
 					
 					SetXY (cCol * 8) (cRow * 8)
 					Play S_Count 1
-					Int N = 3 Loop(
-						Int bmp = N * 64 + ~BMP_explosion0
+					Int n = 3 Loop(
+						Int bmp = n * 64 + ~BMP_explosion0
 						Bitmap ~BMP_space Bitmap ~BMP_shroom0 Bitmap bmp
 						Draw
 						Delay 12
-						N - 1 < 0 (Break)
+						n - 1 < 0 (Break)
 					)
 					Bitmap ~BMP_space Bitmap ~BMP_shroom0
 					$ADD_SCORE 5
@@ -806,21 +806,21 @@ Define $DRAW(
 
 	Int cHead = AnimCounter % 8 * 64 + ~BMP_centiHead0
 
-    Int I = Centipede_MaxSize Loop(
-		SetXY Centipede_X.I Centipede_Y.I
+    Int i = Centipede_MaxSize Loop(
+		SetXY Centipede_X.i Centipede_Y.i
 		SetMode 0  										' default drawing mode
-		Centipede_Type.I <> #DEAD (
-			Centipede_Xd.I > 0 (SetMode 2)				' rotate 180°
-			Centipede_Poisoned.I == 0 (
-				Centipede_Yd.I < 0 (SetMode 1)			' rotate 90°
-				Else (> 0 (SetMode 3)) 					' rotate 270°
+		Centipede_Type.i <> #DEAD (
+			Centipede_Xd.i > 0 (SetMode 2)				' rotate 180° (moving to the right)
+			Centipede_Poisoned.i == 0 (
+				Centipede_Yd.i < 0 (SetMode 1)			' rotate 90° (moving up)
+				Else (> 0 (SetMode 3)) 					' rotate 270° (moving down)
 			)	
 			
-			Centipede_Type.I == #SINGLEHEAD (Bitmap cHead Int animB = AnimCounter)
+			Centipede_Type.i == #SINGLEHEAD (Bitmap cHead Int animB = AnimCounter)
 			Else (== #HEAD ( Bitmap cHead animB = AnimCounter))
 			Else (== #BODY ( animB + 7 Int cBody = animB % 8 * 64 + ~BMP_centiBody0 Bitmap cBody ))
 		)
-		I - 1 < 0 (Break)
+		i - 1 < 0 (Break)
     )
 	
 	$DRAW_BORDER
@@ -839,10 +839,10 @@ Define $DRAW_BORDER(
 	$DRAW_NUMBER HighScore 13 0 4
 	
 	Int f = 6
-	Int I = 1 Loop(
+	Int i = 1 Loop(
 		Field.f = ~BMP_shooter
 		f + 1
-		I + 1 > Shooter_Lives (Break)
+		i + 1 > Shooter_Lives (Break)
     )
 	
 	f = 0
@@ -855,22 +855,22 @@ Define $DRAW_BORDER(
 
 Define $DRAW_TEXT text x y(
 	Int f = y * 30 + x
-	Int I = 0 Loop(
-		!text.I < 0 (Return)
-		Field.f = !text.I * 64 + ~BMP_TEXT
+	Int i = 0 Loop(
+		!text.i < 0 (Return)
+		Field.f = !text.i * 64 + ~BMP_TEXT
 		f + 1
-		I + 1 > 30 (Break)
+		i + 1 > 30 (Break)
 	)
 )
 
 Define $DRAW_NUMBER num x y digits(
 	Int f = y * 30 + x
 	Int d = digits
-    Int I = 0 Loop(
+    Int i = 0 Loop(
 		Field.f = num Nth d * 64 + ~BMP_NUMBER
 		f + 1
 		d - 1
-		I + 1 > digits (Break)
+		i + 1 > digits (Break)
     )
 )
 
@@ -1696,4 +1696,4 @@ Define ~BMP_NUMBER(
 Define ~BMP_space(16*64) 
 IDE-OPTIONS
 VERSION=1.0
-CARRET=4540
+CARRET=0
