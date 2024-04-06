@@ -296,12 +296,11 @@ Structure OPCODE
 EndStructure
 
 Structure ExitList
-	bracketCount.i
 	lineNr.i
 	exit_adr.i
 	List adrList.i()
 	adr.i
-	*data.DATASECT
+	loopDepth.i
 EndStructure
 
 Structure VARLIST
@@ -3250,7 +3249,7 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 						Parse_WriteI(opcodeIP, #SYM_ADDRESS) ; jump back to loop start
 						
 						ForEach Parser\brakeList()
-							If Parser\loopDepth <= Parser\brakeList()\data
+							If Parser\loopDepth <= Parser\brakeList()\loopDepth
 								SETVAL(Parser\brakeList()\adr, *CPU\IP) ; set exit address
 								DeleteElement(Parser\brakeList())
 							EndIf
@@ -3264,9 +3263,9 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				
 				If readState & #READ_LOOP
 					If AddElement(Parser\brakeList())
-						Parser\brakeList()\data = Parser\loopDepth
+						Parser\brakeList()\loopDepth = Parser\loopDepth
 						If Parse_NextToken(#T_NUMBER)
-							Parser\brakeList()\data - Min(Parser\curToken\value, Parser\loopDepth)
+							Parser\brakeList()\loopDepth - Min(Parser\curToken\value, Parser\loopDepth)
 						EndIf
 						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
 						Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS) ; placeholder for the exit address
@@ -4447,10 +4446,10 @@ DataSection
 EndDataSection
 ;}
 ; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; CursorPosition = 1833
-; FirstLine = 1824
+; CursorPosition = 3267
+; FirstLine = 3261
 ; Folding = ---------------
-; Markers = 3263
+; Markers = 3262
 ; EnableXP
 ; DPIAware
 ; DllProtection
