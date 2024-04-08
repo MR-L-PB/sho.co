@@ -353,11 +353,13 @@ Procedure Scintilla_Gadget(ID, X, Y, Width, Height)
 		ScintillaSendMessage(ID, #SCI_SETILEXER, 0, 0)
 		ScintillaSendMessage(ID, #SCI_STYLESETBACK, #STYLE_DEFAULT, bColor)
 		
-		Define *font = UTF8("Consolas")
-		ScintillaSendMessage(ID, #SCI_STYLESETFONT, #STYLE_DEFAULT, *font)
-		FreeMemory(*font)
+		Define *font = UTF8(FontName)
+		If *font
+			ScintillaSendMessage(ID, #SCI_STYLESETFONT, #STYLE_DEFAULT, *font)
+			FreeMemory(*font)
+		EndIf
 		
-		ScintillaSendMessage(ID, #SCI_STYLESETSIZE, #STYLE_DEFAULT, 11)
+		ScintillaSendMessage(ID, #SCI_STYLESETSIZE, #STYLE_DEFAULT, FontHeight)
 		ScintillaSendMessage(ID, #SCI_STYLECLEARALL, 0, 0)
 		
 		ScintillaSendMessage(ID, #SCI_SETSELBACK, 1, RGB(255,255,255))
@@ -851,9 +853,9 @@ Procedure Scintilla_Redo(sci)
 		ScintillaSendMessage(Scintilla()\ID, #SCI_REDO, 0, 0)
 	EndIf
 EndProcedure
-; IDE Options = PureBasic 6.04 beta 2 LTS (Windows - x64)
-; CursorPosition = 41
-; FirstLine = 25
+; IDE Options = PureBasic 6.10 LTS (Windows - x64)
+; CursorPosition = 361
+; FirstLine = 351
 ; Folding = --------
 ; EnableXP
 ; Executable = ..\ShoCo.exe

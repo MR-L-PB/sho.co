@@ -22,7 +22,8 @@ Sound( ' loading sounds...
 	S_Clear "_snd\clear.wav"
 )
 
-Int( ' define global variables:
+' define global variables:
+Int(
 	Level Score Score_X Score_Y Score_BMP OneUpScore ColIndex
 	Centipede_Size Centipede_Heads Centipede_NewHead Centipede_MaxSize Centipede_Dead Centipede_Step Centipede_Delay Centipede_NewHeadTime
 	Flea_Enabled Flea_X Flea_Y Flea_Yd Flea_Time
@@ -856,7 +857,7 @@ Define $DRAW_BORDER(
 Define $DRAW_TEXT text x y(
 	Int f = y * 30 + x
 	Int i = 0 Loop(
-		!text.i < 0 (Return)
+		!text.i < 0 (Break)
 		Field.f = !text.i * 64 + ~BMP_TEXT
 		f + 1
 		i + 1 > 30 (Break)
@@ -1696,4 +1697,4 @@ Define ~BMP_NUMBER(
 Define ~BMP_space(16*64) 
 IDE-OPTIONS
 VERSION=1.0
-CARRET=0
+CARRET=2248

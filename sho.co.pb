@@ -13,6 +13,12 @@ InitMouse()
 #AppTitle$ = "sho.co"
 #NewFileName$ = "<New>"
 
+Global FontHeight = 11
+Global FontName.s = "Consolas"
+Global Font = LoadFont(#PB_Any, FontName, FontHeight)
+Global FontBold = LoadFont(#PB_Any, FontName, FontHeight, #PB_Font_Bold)
+
+
 #NbDecimals = 4
 #PROTECT_RAM = 1
 
@@ -52,7 +58,6 @@ Enumeration ENUM_MENU 1
 	#m_Run
 	#m_Step
 	#m_StepOut
-	#m_Hilight
 	#m_Monitor
 	#m_MonitorUp
 	#m_MonitorDown
@@ -175,23 +180,26 @@ EndEnumeration
 
 Global Dim TokenName.s(255)
 TokenName(#T_UNKNOWN) = "UNKNOWN"
-TokenName(#T_OPCODE) = "OPCODE"
+TokenName(#T_DEFINE) = "DEFINE"
+TokenName(#T_SUB) = "SUB"
 TokenName(#T_CONSTANT) = "CONSTANT"
+TokenName(#T_FIELD) = "FIELD"
+TokenName(#T_LABEL) = "LABEL"
+TokenName(#T_OPCODE) = "OPCODE"
 TokenName(#T_VARIABLE) = "VARIABLE"
 TokenName(#T_INT) = "INT"
 TokenName(#T_FLOAT) = "FLOAT"
 TokenName(#T_CHAR) = "CHAR"
 TokenName(#T_PERIOD) = "PERIOD"
 TokenName(#T_NUMBER) = "NUMBER"
-TokenName(#T_SUB) = "SUB"
-TokenName(#T_LABEL) = "LABEL"
+TokenName(#T_LOOP) = "LOOP"
 TokenName(#T_BRACKET_OPEN) = "BRACKET_OPEN"
 TokenName(#T_BRACKET_CLOSE) = "BRACKET_CLOSE"
 TokenName(#T_NEWLINE) = "NEWLINE"
 TokenName(#T_SEPARATOR) = "SEPARATOR"
 TokenName(#T_EQUAL) = "EQUAL"
-TokenName(#T_FIELD) = "FIELD"
 TokenName(#T_ELSE) = "ELSE"
+TokenName(#T_RETURN) = "RETURN"
 TokenName(#T_BREAK) = "BREAK"
 TokenName(#T_STRING) = "STRING"
 TokenName(#T_COMMENT) = "COMMENT"
@@ -206,7 +214,6 @@ EndEnumeration
 Enumeration ENUM_OPCODE
 	#OP_END = 0
 	#OP_KIL
-	#OP_MOV
 	#OP_GET
 	#OP_SET
 	#OP_INT
@@ -383,7 +390,7 @@ Structure SYSTEM
 	
 	Array symTable.SYMTABLE(0)
 	
-	adrMode.a							; current addressing mode (encoded in opcode)
+	adrMode.a							; current addressing mode (encoded in high byte of opcode)
 										; bit 3 and 7    param is indexed indirect address (A.B)
 										; bit 2 and 6    param is indexed direct address (A.1)
 										; bit 1 and 5    set = param is a pointer
@@ -444,7 +451,6 @@ Structure PARSER
 	curAdrMode.i
 	curIP.i
 	*curSub.SUB
-	*curOpcode.OPCODE
 	*curField.DATASECT
 	*curDataSect.DATASECT
 	*curVar.VARIABLE
@@ -490,15 +496,13 @@ Global NewMap KeyWord.KEYWORD()
 Global NewMap Constant.CONSTANT()
 Global MonitorVisible, Window_X = 100, Window_Y = 100
 Global RunState.i
-Global Font = LoadFont(#PB_Any, "Consolas", 10)
-Global FontBold = LoadFont(#PB_Any, "Consolas", 10, #PB_Font_Bold)
 
 Declare File_Add(path.s = "", newFile = #False)
 Declare File_Open(path.s, newFile = #False, activate = #False)
 Declare File_Close(*file.FILE, quit = #False, saveChanges = #True)
 Declare File_Activate(*file.File, carretPos = -1, parse = #False)
 Declare File_UpdateIni()
-Declare System_Init(ramSize, stackSize)
+Declare System_Init(RamSize, StackSize)
 Declare System_RunState(state, updateGadget = #True)
 Declare System_CloseScreen(CloseScreen = #False)
 Declare System_Update_Editor(*file.FILE, init = #False)
@@ -734,12 +738,22 @@ EndProcedure
 
 ;-
 
+Macro CatchImage_(Img_, Name_)
+	Img_ = CatchImage(#PB_Any, Name_)
+	If IsImage(Img_)
+		Img_ = ImageID(Img_)
+	Else
+		Img_ = ImageID(ImageMissing)
+	EndIf
+EndMacro
+
 Procedure IDE_Init()
 	Protected *file.FILE
 	
 	Protected opcode, nParams, size, mnemonic.s, name.s
-	Protected text.s, param.s, paramNr
-	
+	Protected text.s, param.s, paramNr	
+	Protected ImageMissing = CreateImage(#PB_Any, 24, 24, 24, #Red)
+
 	Restore Opcodes:
 	Repeat
 		Read opcode
@@ -782,30 +796,30 @@ Procedure IDE_Init()
 	Keyword_Add(#T_RGB, "RGB")
 	
 	Protected NewMap img()
-	img("new") = CatchImage(#PB_Any, ?ico_file_new)
-	img("open") = CatchImage(#PB_Any, ?ico_file_open)
-	img("save") = CatchImage(#PB_Any, ?ico_file_save)
-	img("close") = CatchImage(#PB_Any, ?ico_file_close)
-	img("undo") = CatchImage(#PB_Any, ?ico_undo)
-	img("redo") = CatchImage(#PB_Any, ?ico_redo)
-	img("compilerun") = CatchImage(#PB_Any, ?ico_compile_run)
-	img("compile") = CatchImage(#PB_Any, ?ico_compile)
-	img("run") = CatchImage(#PB_Any, ?ico_run)
-	img("step") = CatchImage(#PB_Any, ?ico_step)
-	img("stepout") = CatchImage(#PB_Any, ?ico_stepout)
-	img("monitor") = CatchImage(#PB_Any, ?ico_monitor)
-	img("help") = CatchImage(#PB_Any, ?ico_help)
-	img("copyMonitor") = CatchImage(#PB_Any, ?ico_copy)
+	CatchImage_(img("new"), ?ico_file_new)
+	CatchImage_(img("open"), ?ico_file_open)
+	CatchImage_(img("save"), ?ico_file_save)
+	CatchImage_(img("close"), ?ico_file_close)
+	CatchImage_(img("undo"), ?ico_undo)
+	CatchImage_(img("redo"), ?ico_redo)
+	CatchImage_(img("compilerun"), ?ico_compile_run)
+	CatchImage_(img("compile"), ?ico_compile)
+	CatchImage_(img("run"), ?ico_run)
+	CatchImage_(img("step"), ?ico_step)
+	CatchImage_(img("stepout"), ?ico_stepout)
+	CatchImage_(img("monitor"), ?ico_monitor)
+	CatchImage_(img("help"), ?ico_help)
+	CatchImage_(img("copymonitor"), ?ico_copy)
 	
 	OpenWindow(#w_Main, 0, 0, 800, 600, #AppTitle$ + " - Control", #PB_Window_SystemMenu | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget | #PB_Window_SizeGadget | #PB_Window_Invisible | #PB_Window_ScreenCentered)
 	
 	CreateImageMenu(0, WindowID(#w_Main))
 	MenuTitle("File")
-	MenuItem(#m_New, "New", ImageID(img("new")))
-	MenuItem(#m_Open, "Open...", ImageID(img("open")))
-	MenuItem(#m_Save, "Save", ImageID(img("save")))
+	MenuItem(#m_New, "New", img("new"))
+	MenuItem(#m_Open, "Open...", img("open"))
+	MenuItem(#m_Save, "Save", img("save"))
 	MenuItem(#m_SaveAs, "Save As...")
-	MenuItem(#m_Close, "Close", ImageID(img("close")))
+	MenuItem(#m_Close, "Close", img("close"))
 	MenuBar()
 	MenuItem(#m_Quit, "Quit")
 	MenuTitle("Edit")
@@ -815,24 +829,24 @@ Procedure IDE_Init()
 	MenuItem(#m_Comment, "Comment")
 	MenuItem(#m_Uncomment, "Uncomment")
 	MenuTitle("Help")
-	MenuItem(#m_Help, "Help...", ImageID(img("help")))
+	MenuItem(#m_Help, "Help...", img("help"))
 	
 	CreateToolBar(#t_Main, WindowID(#w_Main), #PB_ToolBar_Small)
-	ToolBarImageButton(#m_New, ImageID(img("new"))) : ToolBarToolTip(#t_Main, #m_New, "New")
-	ToolBarImageButton(#m_Open, ImageID(img("open"))) : ToolBarToolTip(#t_Main, #m_Open, "Open")
-	ToolBarImageButton(#m_Save, ImageID(img("save"))) : ToolBarToolTip(#t_Main, #m_Save, "Save")
+	ToolBarImageButton(#m_New, img("new")) : ToolBarToolTip(#t_Main, #m_New, "New")
+	ToolBarImageButton(#m_Open, img("open")) : ToolBarToolTip(#t_Main, #m_Open, "Open")
+	ToolBarImageButton(#m_Save, img("save")) : ToolBarToolTip(#t_Main, #m_Save, "Save")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_Close,ImageID(img("close"))) : ToolBarToolTip(#t_Main, #m_Close, "Close")
+	ToolBarImageButton(#m_Close, img("close")) : ToolBarToolTip(#t_Main, #m_Close, "Close")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_Undo, ImageID(img("undo"))) : ToolBarToolTip(#t_Main, #m_Undo, "Undo")
-	ToolBarImageButton(#m_Redo, ImageID(img("redo"))) : ToolBarToolTip(#t_Main, #m_Redo, "Redo")
+	ToolBarImageButton(#m_Undo, img("undo")) : ToolBarToolTip(#t_Main, #m_Undo, "Undo")
+	ToolBarImageButton(#m_Redo, img("redo")) : ToolBarToolTip(#t_Main, #m_Redo, "Redo")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_ParseRun, ImageID(img("compilerun"))) : ToolBarToolTip(#t_Main, #m_ParseRun, "Compile/Run")
-	ToolBarImageButton(#m_Parse, ImageID(img("compile"))) : ToolBarToolTip(#t_Main, #m_Parse, "Compile")
+	ToolBarImageButton(#m_ParseRun, img("compilerun")) : ToolBarToolTip(#t_Main, #m_ParseRun, "Compile/Run")
+	ToolBarImageButton(#m_Parse, img("compile")) : ToolBarToolTip(#t_Main, #m_Parse, "Compile")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_Monitor, ImageID(img("monitor"))) : ToolBarToolTip(#t_Main, #m_Monitor, "Monitor")
+	ToolBarImageButton(#m_Monitor, img("monitor")) : ToolBarToolTip(#t_Main, #m_Monitor, "Monitor")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_Help, ImageID(img("help"))) : ToolBarToolTip(#t_Main, #m_Help, "Help")
+	ToolBarImageButton(#m_Help, img("help")) : ToolBarToolTip(#t_Main, #m_Help, "Help")
 	
 	CreateStatusBar(0, WindowID(#w_Main))
 	AddStatusBarField(200)
@@ -877,7 +891,6 @@ Procedure IDE_Init()
 	AddKeyboardShortcut(#w_Main, #PB_Shortcut_Control | #PB_Shortcut_B, #m_Comment)	
 	AddKeyboardShortcut(#w_Main, #PB_Shortcut_Control | #PB_Shortcut_Shift | #PB_Shortcut_B, #m_Uncomment)
 	AddKeyboardShortcut(#w_Main, #PB_Shortcut_Control | #PB_Shortcut_Tab, #m_NextFile)
-	AddKeyboardShortcut(#w_Main, #PB_Shortcut_F2, #m_Hilight)
 	
 	BindEvent(#PB_Event_Gadget, @Event_Gadget())
 	BindEvent(#PB_Event_Menu, @Event_Menu())
@@ -891,13 +904,13 @@ Procedure IDE_Init()
 	
 	OpenWindow(#w_Monitor, 0, 0, 800,600, #AppTitle$ + " - Monitor", #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
 	CreateToolBar(#t_Monitor, WindowID(#w_Monitor), #PB_ToolBar_Small)
-	ToolBarImageButton(#m_ParseRun, ImageID(img("compilerun"))) : ToolBarToolTip(#t_Monitor, #m_ParseRun, "Compile/Run")
-	ToolBarImageButton(#m_Parse, ImageID(img("compile"))) : ToolBarToolTip(#t_Monitor, #m_Parse, "Compile")
+	ToolBarImageButton(#m_ParseRun, img("compilerun")) : ToolBarToolTip(#t_Monitor, #m_ParseRun, "Compile/Run")
+	ToolBarImageButton(#m_Parse, img("compile")) : ToolBarToolTip(#t_Monitor, #m_Parse, "Compile")
 	ToolBarSeparator()
-	ToolBarImageButton(#m_Run, ImageID(img("run"))) : ToolBarToolTip(#t_Monitor, #m_Run, "Run")
-	ToolBarImageButton(#m_Step, ImageID(img("step"))) : ToolBarToolTip(#t_Monitor, #m_Step, "Step")	
-	ToolBarImageButton(#m_StepOut, ImageID(img("stepout"))) : ToolBarToolTip(#t_Monitor, #m_StepOut, "Step Out")
-	ToolBarImageButton(#m_CopyMonitor, ImageID(img("copyMonitor"))) : ToolBarToolTip(#t_Monitor, #m_CopyMonitor, "Copy")
+	ToolBarImageButton(#m_Run, img("run")) : ToolBarToolTip(#t_Monitor, #m_Run, "Run")
+	ToolBarImageButton(#m_Step, img("step")) : ToolBarToolTip(#t_Monitor, #m_Step, "Step")	
+	ToolBarImageButton(#m_StepOut, img("stepout")) : ToolBarToolTip(#t_Monitor, #m_StepOut, "Step Out")
+	ToolBarImageButton(#m_CopyMonitor, img("copymonitor")) : ToolBarToolTip(#t_Monitor, #m_CopyMonitor, "Copy")
 	
 	ListIconGadget(#g_Monitor, 0, 0, 0, 0, "Address", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
 	AddGadgetColumn(#g_Monitor, 1, "m1", 50)
@@ -939,7 +952,7 @@ Procedure IDE_Init()
 	SetGadgetColor(#g_Sub, #PB_Gadget_BackColor, 0)
  	SetGadgetColor(#g_Sub, #PB_Gadget_FrontColor, RGB(255,255,255))
 	
-	While CountGadgetItems(#g_Monitor) < 100
+	While CountGadgetItems(#g_Monitor) < 1000
 		AddGadgetItem(#g_Monitor, -1, "")
 	Wend
 	
@@ -1040,7 +1053,7 @@ Procedure File_Open(path.s, newFile = #False, activate = #False)
 	Protected carret, option.s, optionName.s, optionVal.s
 	Protected file, *file.FILE, *tempFile.FILE
 	
-	path = ReplaceString(path, "\", "/")
+	;path = ReplaceString(path, "\", "/")
 	
 	If newFile = #False
 		If path = ""
@@ -1579,6 +1592,7 @@ Procedure System_Update_SubList()
 	Next
 	
 	AddGadgetItem(#g_Sub, index, "")
+	SetGadgetItemData(#g_Sub, index, -1)
 	index + 1
 	
 	ForEach Parser\field()
@@ -1836,7 +1850,7 @@ Procedure System_Update_Monitor(ip, direction = 0)
 EndProcedure
 
 Procedure System_GotoLine(lineNr)
-	If *CurrentFile And IsGadget(*CurrentFile\editor)
+	If (lineNr >= 0) And *CurrentFile And IsGadget(*CurrentFile\editor)
 		Scintilla_SetCursorPosition(*CurrentFile\editor, lineNr, 0)
 	EndIf
 EndProcedure
@@ -3151,10 +3165,6 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 										Next
 										ClearList(*childSub\ret())
 										
-										;Parse_WriteI(#OP_POV, #SYM_OPCODE)
-										Parse_WriteI(#OP_MOV | #ADR_INDIRECT << 8, #SYM_OPCODE)
-										Parse_WriteI(System\ADR_VarStart, #SYM_ADDRESS)
-										
 										Parse_WriteI(#OP_POI, #SYM_OPCODE)
 									EndIf
 									
@@ -3202,7 +3212,7 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				
 				Parse_Token(*sub, Parser\curToken, 0, #True)
 				
-			Case #T_SUB ;- CALL SUB
+			Case #T_SUB
 				
 				Parse_Sub(*sub, readState)
 				
@@ -3227,15 +3237,13 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 			Case #T_LOOP
 				
 				If Parse_NextToken(#T_BRACKET_OPEN, #True)
-					opcodeIP = *CPU\IP
-					*curOpcode = Parser\curToken\opcode
-					Parser\curOpcode = #Null;*curOpcode
-					Parser\curIP = *CPU\IP
-					System\adrMode = 0
-					
 					Parse_AddBracket()
 					
+					opcodeIP = *CPU\IP
+					System\adrMode = 0
+					Parser\curIP = *CPU\IP
 					Parser\loopDepth + 1
+					
 					If Parse_Main(*sub, readState | #READ_LOOP, depth + 1)
 						Parser\loopDepth - 1
 						
@@ -3259,7 +3267,7 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 					If AddElement(Parser\brakeList())
 						Parser\brakeList()\loopDepth = Parser\loopDepth
 						If Parse_NextToken(#T_NUMBER)
-							Parser\brakeList()\loopDepth - Min(Parser\curToken\value, Parser\loopDepth)
+							Parser\brakeList()\loopDepth - CLAMP(Parser\curToken\value, 1, Parser\loopDepth)
 						EndIf
 						Parse_WriteI(#OP_JMP, #SYM_OPCODE)
 						Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS) ; placeholder for the exit address
@@ -3292,7 +3300,6 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				
 				opcodeIP = *CPU\IP
 				*curOpcode = Parser\curToken\opcode
-				Parser\curOpcode = *curOpcode
 				Parser\curIP = *CPU\IP
 				System\adrMode = 0
 				
@@ -3355,7 +3362,7 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 							Parse_Param(*sub, 1)
 						EndIf
 						
-					Default ;- OPCODE
+					Default
 						
 						Parser\curIP = *CPU\IP
 						System\adrMode = 0
@@ -3599,10 +3606,10 @@ Procedure Event_Menu()
 			For lastI = CountGadgetItems(#g_Monitor) - 1 To 0 Step - 1
 				If Trim(GetGadgetItemText(#g_Monitor, lastI, 4))
 					For i = 0 To lastI
-						; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 0), 12)
-						; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 1), 5)
-						; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 2), 5)
-						; 						text + RSet(GetGadgetItemText(#g_Monitor, i, 3), 5)
+						text + RSet(GetGadgetItemText(#g_Monitor, i, 0), 16)
+						text + RSet(GetGadgetItemText(#g_Monitor, i, 1), 8)
+						text + RSet(GetGadgetItemText(#g_Monitor, i, 2), 8)
+						text + RSet(GetGadgetItemText(#g_Monitor, i, 3), 8) + "    "
 						text + GetGadgetItemText(#g_Monitor, i, 4) + #NL$
 					Next
 					Break
@@ -3637,10 +3644,6 @@ Procedure Event_Menu()
 					MessageRequester(#AppTitle$, "No match found.")
 				EndIf
 				SetActiveGadget(*CurrentFile\editor)
-			EndIf
-		Case #m_Hilight
-			If *CurrentFile
-				Scintilla_HighlightWord(*CurrentFile\editor)
 			EndIf
 		Case #m_Comment
 			If *CurrentFile
@@ -3787,10 +3790,6 @@ Repeat
 			System\nextIP = *CPU\IP + 1
 			
 			Select opcode ;- RUN
-				Case #OP_MOV ; value in V-Register to address
-					GETVAL(*CPU\V, valF1)
-					GETVAL_WRITE(System\nextIP, valI1)
-					SETVAL(valI1, valF1)
 				Case #OP_GET ; variable to V-Register
 					GETVAL_WRITE(System\nextIP, *CPU\V)
 				Case #OP_SET ; value to variable in V-Register
@@ -3853,7 +3852,7 @@ Repeat
 					SETVAL(*CPU\V, Sign(valF1))
 				Case #OP_CIL
 					GETVAL(*CPU\V, valF1)
-					*CPU\RAM(*CPU\V) = Round(valF1, #PB_Round_Up)
+					SETVAL(*CPU\V, Round(valF1, #PB_Round_Up))
 				Case #OP_ABS
 					GETVAL(*CPU\V, valF1)
 					SETVAL(*CPU\V, Abs(valF1))
@@ -4312,9 +4311,6 @@ Repeat
 	
 Until System\state & #STATE_QUIT
 
-End
-
-;{
 DataSection
 	ico_file_new:
 	IncludeBinary "_ico\file_new.png"
@@ -4347,7 +4343,7 @@ DataSection
 	
 	Opcodes:
 	;      opcode,  nrParams, size, name
-	Data.i #OP_MOV, 1, 2 : Data.s "MOV,Mov"
+; 	Data.i #OP_MOV, 1, 2 : Data.s "MOV,Mov"
 	Data.i #OP_GET, 1, 2 : Data.s "GET,Get"
 	Data.i #OP_SET, 1, 2 : Data.s "SET,="
 	Data.i #OP_ADD, 1, 2 : Data.s "ADD,+"
@@ -4414,15 +4410,16 @@ DataSection
 	Data.i #OP_END, 0, 1 : Data.s "END,End"
 	Data.i 0, 0, 0
 EndDataSection
-;}
 ; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; CursorPosition = 1148
-; FirstLine = 1132
+; CursorPosition = 3925
+; FirstLine = 3901
 ; Folding = ---------------
-; Markers = 3256
+; Markers = 3264
+; Optimizer
 ; EnableXP
 ; DPIAware
 ; DllProtection
 ; UseIcon = _ico\icon.ico
 ; Executable = ShoCo.exe
 ; DisableDebugger
+; Compiler = PureBasic 6.10 LTS (Windows - x64)
