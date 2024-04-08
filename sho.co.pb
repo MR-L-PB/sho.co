@@ -4343,7 +4343,6 @@ DataSection
 	
 	Opcodes:
 	;      opcode,  nrParams, size, name
-; 	Data.i #OP_MOV, 1, 2 : Data.s "MOV,Mov"
 	Data.i #OP_GET, 1, 2 : Data.s "GET,Get"
 	Data.i #OP_SET, 1, 2 : Data.s "SET,="
 	Data.i #OP_ADD, 1, 2 : Data.s "ADD,+"
@@ -4411,8 +4410,6 @@ DataSection
 	Data.i 0, 0, 0
 EndDataSection
 ; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; CursorPosition = 3925
-; FirstLine = 3901
 ; Folding = ---------------
 ; Markers = 3264
 ; Optimizer
