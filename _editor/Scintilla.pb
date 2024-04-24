@@ -238,9 +238,7 @@ EndProcedure
 ;-
 
 Procedure Scintilla_Callback(sci, *scinotify.SCNotification)
-	Static userInput
 	Protected modified = #False
-	Protected u = userInput
 	Protected *scintilla.SCI_GADGET = Scintilla(Str(sci))
 	If *scintilla = #Null
 		ProcedureReturn #False
@@ -270,7 +268,6 @@ Procedure Scintilla_Callback(sci, *scinotify.SCNotification)
 			EndIf
 		Case #SCN_CHARADDED
 			ScintillaSendMessage(sci, #SCI_BEGINUNDOACTION, 0, 0)
-			userInput = 1
 			Scintilla_HighlightClear(sci)
 			If *scinotify\ch = #CR Or *scinotify\ch = #LF
 				Scintilla_AutoIndent(sci, *scintilla\CursorPos)
@@ -280,7 +277,6 @@ Procedure Scintilla_Callback(sci, *scinotify.SCNotification)
 			ScintillaSendMessage(sci, #SCI_ENDUNDOACTION, 0, 0)
 		Case #SCN_STYLENEEDED
 			Scintilla_Highlight(*scintilla, *scinotify\position)
-			userInput = 0
 		Case #SCN_SAVEPOINTLEFT
 			*scintilla\dirty = 1
 		Case #SCN_SAVEPOINTREACHED
@@ -853,9 +849,9 @@ Procedure Scintilla_Redo(sci)
 		ScintillaSendMessage(Scintilla()\ID, #SCI_REDO, 0, 0)
 	EndIf
 EndProcedure
-; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; CursorPosition = 361
-; FirstLine = 351
+; IDE Options = PureBasic 6.10 LTS (Linux - x64)
+; CursorPosition = 19
+; FirstLine = 15
 ; Folding = --------
 ; EnableXP
-; Executable = ..\ShoCo.exe
+; Executable = ../ShoCo.exe

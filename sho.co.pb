@@ -20,10 +20,10 @@ Global FontBold = LoadFont(#PB_Any, FontName, FontHeight, #PB_Font_Bold)
 
 
 #NbDecimals = 4
-#PROTECT_RAM = 1
+#PROTECT_RAM = 0;1
 
 CompilerIf #PB_Compiler_Debugger
-	MessageRequester(#AppTitle$, "For more speed, deactivate the debugger.", #PB_MessageRequester_Info)
+	;	MessageRequester(#AppTitle$, "For more speed, deactivate the debugger.", #PB_MessageRequester_Info)
 CompilerEndIf
 
 CompilerIf #PB_Compiler_OS = #PB_OS_Windows
@@ -80,7 +80,10 @@ Enumeration ENUM_GADGET 1
 	#g_VarContainer
 	#g_Variables
 	#g_SubContainer
-	#g_Sub
+	#g_SectionPanel
+	#g_SubList
+	#g_FieldList
+	#g_LabelList
 	#g_SearchContainer
 	#g_SearchText
 	#g_SearchPrev
@@ -220,6 +223,8 @@ Enumeration ENUM_OPCODE
 	#OP_NTH
 	#OP_CIL
 	#OP_RSD
+	#OP_SIN
+	#OP_COS
 	#OP_RND
 	#OP_ADD
 	#OP_SUB
@@ -302,6 +307,7 @@ Structure OPCODE
 	nParams.i
 	size.i
 	ip.i
+	proc.i
 EndStructure
 
 Structure ExitList
@@ -435,7 +441,7 @@ Structure SYSTEM
 	programSize.i                       ; size of program
 	startTime.i							; system start time
 	time.i								; systen elapsed milliseconds
-
+	
 	Map sound.i()						; map of loaded sounds
 EndStructure
 
@@ -496,6 +502,7 @@ Global NewMap KeyWord.KEYWORD()
 Global NewMap Constant.CONSTANT()
 Global MonitorVisible, Window_X = 100, Window_Y = 100
 Global RunState.i
+Global ToolBarHeightMain.l, ToolBarHeightMonitor.l
 
 Declare File_Add(path.s = "", newFile = #False)
 Declare File_Open(path.s, newFile = #False, activate = #False)
@@ -513,7 +520,7 @@ Declare System_Error(line, message.s, warning = 0)
 Declare System_VarByIP(ip)
 Declare System_LineNrByIP(ip)
 Declare Tokenize_Start()
-Declare Parse_NextToken(type = #T_UNKNOWN, throwError = #False)
+Declare Parse_NextToken(type = #T_UNKNOWN, throwError =   #False)
 Declare Parse_NextType(direction, tokenType = -1, value.s = "")
 Declare Parse_IsNumber(param.s)
 Declare Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
@@ -524,7 +531,7 @@ Declare Event_Window()
 Declare Event_Gadget()
 Declare Event_Menu()
 
-XIncludeFile("_editor\Scintilla.pb")
+XIncludeFile("_editor/Scintilla.pb")
 
 Macro MEMSTR(v_)
 	"[" + RSet(Str(v_), 6, "0") + "]"
@@ -534,33 +541,24 @@ Macro TIMESTR()
 	"[" + FormatDate("%hh:%ii:%ss", Date()) + "]"
 EndMacro
 
+Macro SETVAL_(ip_, v_)
+	Select System\symTable(ip_)\type	
+		Case #SYM_INT:		*CPU\RAM(ip_) = Int(v_)
+		Case #SYM_FLOAT:	*CPU\RAM(ip_) = v_
+		Case #SYM_CHAR:		valA = v_ : *CPU\RAM(ip_) = valA
+		Default:			*CPU\RAM(ip_) = Int(v_)
+	EndSelect
+EndMacro
+
 Macro SETVAL(ip_, v_)
 	CompilerIf #PROTECT_RAM
 		If (ip_) < 0 Or (ip_) >= System\RAM_Size
 			System_Error(System_LineNrByIP(System\prevIP), "write outside RAM: " + Str(ip_))
 		Else
-			If System\symTable(ip_)\type
-				Select System\symTable(ip_)\type
-					Case #SYM_INT: *CPU\RAM(ip_) = Int(v_)
-					Case #SYM_FLOAT: *CPU\RAM(ip_) = v_
-					Case #SYM_CHAR: valA = v_ : *CPU\RAM(ip_) = valA
-					Default: *CPU\RAM(ip_) = Int(v_)
-				EndSelect
-			Else
-				*CPU\RAM(ip_) = v_
-			EndIf
+			SETVAL_(ip_, v_)
 		EndIf
 	CompilerElse
-		If System\symTable(ip_)\type
-			Select System\symTable(ip_)\type
-				Case #SYM_INT: *CPU\RAM(ip_) = Int(v_)
-				Case #SYM_FLOAT: *CPU\RAM(ip_) = v_
-				Case #SYM_CHAR: valA = v_ : *CPU\RAM(ip_) = valA
-				Default: *CPU\RAM(ip_) = Int(v_)
-			EndSelect
-		Else
-			*CPU\RAM(ip_) = v_
-		EndIf
+		SETVAL_(ip_, v_)
 	CompilerEndIf
 EndMacro
 
@@ -652,7 +650,6 @@ EndMacro
 Macro MATH_F(op_)
 	GETVAL_READ(System\nextIP, valF1)
 	SETVAL(*CPU\V, *CPU\RAM(*CPU\V) op_ valF1)
-	;*CPU\RAM(*CPU\V) op_ valF1
 EndMacro
 
 Macro COMPARE(op_, flagTrue_, flagFalse_)
@@ -750,15 +747,16 @@ EndMacro
 Procedure IDE_Init()
 	Protected *file.FILE
 	
-	Protected opcode, nParams, size, mnemonic.s, name.s
-	Protected text.s, param.s, paramNr	
+	Protected opcode, nParams, size, proc, mnemonic.s, name.s
+	Protected text.s, param.s, paramNr
 	Protected ImageMissing = CreateImage(#PB_Any, 24, 24, 24, #Red)
-
+	
 	Restore Opcodes:
 	Repeat
 		Read opcode
 		Read nParams
 		Read size
+		Read proc
 		
 		If size
 			Read.s text
@@ -772,6 +770,7 @@ Procedure IDE_Init()
 				\ID = opcode
 				\nParams = nParams
 				\size = size
+				\proc = proc
 			EndWith
 			
 			*Opcode(UCase(name)) = @Opcode(opcode)
@@ -811,7 +810,7 @@ Procedure IDE_Init()
 	CatchImage_(img("help"), ?ico_help)
 	CatchImage_(img("copymonitor"), ?ico_copy)
 	
-	OpenWindow(#w_Main, 0, 0, 800, 600, #AppTitle$ + " - Control", #PB_Window_SystemMenu | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget | #PB_Window_SizeGadget | #PB_Window_Invisible | #PB_Window_ScreenCentered)
+	OpenWindow(#w_Main, 0, 0, 800, 600, #AppTitle$ + " - Control", #PB_Window_SystemMenu | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget | #PB_Window_SizeGadget | #PB_Window_Invisible | #PB_Window_ScreenCentered | #PB_Window_Maximize)
 	
 	CreateImageMenu(0, WindowID(#w_Main))
 	MenuTitle("File")
@@ -860,8 +859,17 @@ Procedure IDE_Init()
 	ButtonGadget(#g_SearchNext, 130, 0, 25, 25, ">")
 	ButtonGadget(#g_SearchOptions, 155, 0, 25, 25, "...")
 	CloseGadgetList()
-	ListViewGadget(#g_Sub, 0, 30, 0, 0)
+	
+	PanelGadget(#g_SectionPanel, 0, 0, 0, 0)
+	AddGadgetItem(#g_SectionPanel, 0, "Subs")
+	ListViewGadget(#g_SubList, 0, 0, 0, 0)
+	AddGadgetItem(#g_SectionPanel, 1, "Fields")
+	ListViewGadget(#g_FieldList, 0, 0, 0, 0)
+	AddGadgetItem(#g_SectionPanel, 2, "Labels")
+	ListViewGadget(#g_LabelList, 0, 0, 0, 0)
 	CloseGadgetList()
+	CloseGadgetList()
+	
 	PanelGadget(#g_FilePanel, 0, MenuHeight() + 5, 800, 600)
 	CloseGadgetList()
 	
@@ -897,7 +905,7 @@ Procedure IDE_Init()
 	BindEvent(#PB_Event_CloseWindow, @Event_Window())
 	BindEvent(#PB_Event_SizeWindow, @Event_Window())
 	
-	OpenWindow(#w_Screen, 0, 0, 320, 240, #AppTitle$, #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
+	OpenWindow(#w_Screen, 0, 0, 320, 240, #AppTitle$, #PB_Window_SystemMenu | #PB_Window_Tool | #PB_Window_SizeGadget | #PB_Window_Invisible)
 	AddKeyboardShortcut(#w_Screen, #PB_Shortcut_F5, #m_ParseRun)
 	AddKeyboardShortcut(#w_Screen, #PB_Shortcut_F6, #m_Parse)
 	StickyWindow(#w_Screen, 1)
@@ -946,24 +954,40 @@ Procedure IDE_Init()
 	SetGadgetFont(#g_Error, FontID(Font))
 	SetGadgetFont(#g_Variables, FontID(Font))
 	SetGadgetFont(#g_Monitor, FontID(Font))
-	SetGadgetFont(#g_Sub, FontID(FontBold))
+	SetGadgetFont(#g_SubList, FontID(FontBold))
+	SetGadgetFont(#g_FieldList, FontID(FontBold))
+	SetGadgetFont(#g_LabelList, FontID(FontBold))
 	SetGadgetColor(#g_Error, #PB_Gadget_BackColor, 0)
 	SetGadgetColor(#g_Error, #PB_Gadget_FrontColor, RGB(255,255,255))
-	SetGadgetColor(#g_Sub, #PB_Gadget_BackColor, 0)
- 	SetGadgetColor(#g_Sub, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_SubList, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_SubList, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_FieldList, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_FieldList, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_LabelList, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_LabelList, #PB_Gadget_FrontColor, RGB(255,255,255))
 	
 	While CountGadgetItems(#g_Monitor) < 1000
 		AddGadgetItem(#g_Monitor, -1, "")
 	Wend
 	
-	SetWindowState(#w_Main, #PB_Window_Maximize)
-	WindowBounds(#w_Screen, #PB_Ignore, #PB_Ignore, #PB_Ignore, WindowHeight(#w_Main) - ToolBarHeight(#t_Main) - StatusBarHeight(0) - MenuHeight())	
+	CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+		ToolBarHeightMain = ToolBarHeight(#t_Main)
+		ToolBarHeightMonitor = ToolBarHeight(#t_Monitor)
+	CompilerElse
+		ToolBarHeightMain = 0
+		ToolBarHeightMonitor = 0
+	CompilerEndIf
+	
+	;	SetWindowState(#w_Main, #PB_Window_Maximize)
+	;WindowBounds(#w_Screen, #PB_Ignore, #PB_Ignore, #PB_Ignore, WindowHeight(#w_Main) - ToolBarHeight(#t_Main) - StatusBarHeight(0) - MenuHeight())
 	
 	OpenWindow(#w_Debug, 0, 0, 600, 400, #AppTitle$ + " - Debug output", #PB_Window_Tool | #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
 	EditorGadget(#g_Debug, 0, 0, 600, 400, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
 	StickyWindow(#w_Debug, 1)
 	SetGadgetFont(#g_Debug, FontID(Font))
 	
+	PostEvent(#PB_Event_SizeWindow, #w_Monitor, 0)	
+	PostEvent(#PB_Event_SizeWindow, #w_Main, 0)	
 	SetActiveWindow(#w_Main)
 	
 	File_Activate(*file)
@@ -993,6 +1017,7 @@ EndProcedure
 Procedure File_Add(path.s = "", newFile = #False)
 	Protected *file.FILE
 	Protected index, oldGadgetList
+	path = ReplaceString(path, "\", "/")
 	
 	*file = File_Find(path)
 	If newFile Or *file = #Null
@@ -1052,8 +1077,7 @@ EndProcedure
 Procedure File_Open(path.s, newFile = #False, activate = #False)
 	Protected carret, option.s, optionName.s, optionVal.s
 	Protected file, *file.FILE, *tempFile.FILE
-	
-	;path = ReplaceString(path, "\", "/")
+	path = ReplaceString(path, "\", "/")
 	
 	If newFile = #False
 		If path = ""
@@ -1138,6 +1162,8 @@ Procedure File_Save(*file.FILE, saveAs = #False)
 		If GetExtensionPart(path) = ""
 			path + ".txt"
 		EndIf
+		
+		path = ReplaceString(path, "\", "/")
 		
 		*tempFile = File_Find(path)
 		If *tempFile And MessageRequester(#AppTitle$, path + #NL$ + "a tab with this filename already exists - overwrite?", #PB_MessageRequester_YesNo) <> #PB_MessageRequester_Yes
@@ -1267,7 +1293,10 @@ EndProcedure
 
 ;-
 
-Macro SYSTEM_INITRAM(pos_, before_ = 0, after_ = 1)
+Macro SYSTEM_INITRAM(pos_, before_ = 0, after_ = 1, type_ = #SYM_INT)
+	For i = *CPU\IP - after_ To *CPU\IP - before_
+		System\symTable(i)\type = type_
+	Next
 	*CPU\IP - (before_)
 	System\pos_ = *CPU\IP
 	*CPU\IP - (after_)
@@ -1306,7 +1335,9 @@ Procedure System_Init(ramSize, stackSize)
 	For i = CountGadgetItems(#g_Monitor) - 1 To 0 Step -1
 		SetGadgetItemText(#g_Monitor, i, "" + #LF$ + "" + #LF$ + "")
 	Next
-	ClearGadgetItems(#g_Sub)
+	ClearGadgetItems(#g_SubList)
+	ClearGadgetItems(#g_FieldList)
+	ClearGadgetItems(#g_LabelList)
 	ClearGadgetItems(#g_Debug)
 	ClearGadgetItems(#g_Variables)
 	
@@ -1336,10 +1367,10 @@ Procedure System_Init(ramSize, stackSize)
 	SYSTEM_INITRAM(ADR_Time)
 	SYSTEM_INITRAM(ADR_CollisionID)
 	SYSTEM_INITRAM(ADR_Collision)
-	SYSTEM_INITRAM(ADR_StackEnd)
-	SYSTEM_INITRAM(ADR_StackStart, 255)
+	SYSTEM_INITRAM(ADR_StackEnd, 0, 1, #SYM_FLOAT)
+	SYSTEM_INITRAM(ADR_StackStart, 255, 1, #SYM_FLOAT)
 	SYSTEM_INITRAM(ADR_VarStart, 1)
-	SYSTEM_INITRAM(ADR_Var, 8)
+	SYSTEM_INITRAM(ADR_Var, 0, *CPU\IP, #SYM_FLOAT)
 	
 	SETVAL(System\ADR_Palette, 1)
 	SETVAL(System\ADR_BMP_W, 8)
@@ -1365,9 +1396,11 @@ Procedure System_Init(ramSize, stackSize)
 	Constant_Add(#SYM_ADDRESS, "#PALETTE", @System\ADR_Palette)
 	Constant_Add(#SYM_ADDRESS, "#FRONTCOLOR", @System\ADR_COL_Front)
 	Constant_Add(#SYM_ADDRESS, "#BACKCOLOR", @System\ADR_COL_Back)
-	Constant_Add(#SYM_ADDRESS, "#CHAR_W", @System\ADR_BMP_W)
-	Constant_Add(#SYM_ADDRESS, "#CHAR_H", @System\ADR_BMP_H)
-	Constant_Add(#SYM_ADDRESS, "#CHAR_MODE", @System\ADR_BMP_MODE)
+	Constant_Add(#SYM_ADDRESS, "#BMP_X", @System\ADR_BMP_X)
+	Constant_Add(#SYM_ADDRESS, "#BMP_Y", @System\ADR_BMP_Y)
+	Constant_Add(#SYM_ADDRESS, "#BMP_W", @System\ADR_BMP_W)
+	Constant_Add(#SYM_ADDRESS, "#BMP_H", @System\ADR_BMP_H)
+	Constant_Add(#SYM_ADDRESS, "#BMP_MODE", @System\ADR_BMP_MODE)
 	Constant_Add(#SYM_ADDRESS, "#MOUSE_X", @System\ADR_MOUSE_X)
 	Constant_Add(#SYM_ADDRESS, "#MOUSE_Y", @System\ADR_MOUSE_Y)
 	Constant_Add(#SYM_ADDRESS, "#MOUSE_B", @System\ADR_MOUSE_B)
@@ -1409,9 +1442,10 @@ Procedure System_Init(ramSize, stackSize)
 	Constant_Add(#SYM_CONSTANT, "#GR", #FLAG_GREATER)
 	Constant_Add(#SYM_CONSTANT, "#LO", #FLAG_LOWER)
 	
+	System\ADR_Var = System\ADR_VarStart - 8 ; make room for a few internal variables
 	System\CPU\IP = 0
 	System\CPU\SP = System\ADR_StackStart
-	System\SCR_PixelSize = 1
+	System\SCR_PixelSize = 2.5
 	System\startTime = ElapsedMilliseconds()
 EndProcedure
 
@@ -1422,13 +1456,14 @@ Procedure System_Start(ramSize_, stackSize_)
 	RamSize = ramSize_
 	StackSize = stackSize_
 	
+	SetCurrentDirectory(GetPathPart(ProgramFilename()))
 	System_Init(RamSize, StackSize)
 	
 	System\state | #STATE_SILENT
 	If OpenPreferences("Settings.ini")
-		currentFile = ReadPreferenceString("CURRENTFILE", "")
+		currentFile = ReplaceString(ReadPreferenceString("CURRENTFILE", ""), "\", "/")
 		Repeat
-			path = ReadPreferenceString("FILE" + Str(index), "")
+			path = ReplaceString(ReadPreferenceString("FILE" + Str(index), ""), "\", "/")
 			If currentFile And path = currentFile
 				*file = File_Open(path)
 			ElseIf path
@@ -1574,6 +1609,10 @@ Procedure System_Update_SubList()
 	Protected index
 	Protected NewList subList.DATASECT()
 	
+	ClearGadgetItems(#g_SubList)
+	ClearGadgetItems(#g_FieldList)
+	ClearGadgetItems(#g_LabelList)
+	
 	ForEach Parser\datasect()
 		If Parser\datasect()\isSub
 			If AddElement(subList())
@@ -1584,22 +1623,29 @@ Procedure System_Update_SubList()
 	;SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(LABEL\name), #PB_String)
 	SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(DATASECT\lineNr), TypeOf(DATASECT\lineNr))
 	
-	ClearGadgetItems(#g_Sub)
 	ForEach subList()
-		AddGadgetItem(#g_Sub, index, RemoveString(TokenText(subList()\token), ":"))
-		SetGadgetItemData(#g_Sub, index, subList()\lineNr)
+		AddGadgetItem(#g_SubList, index, RemoveString(TokenText(subList()\token), ":"))
+		SetGadgetItemData(#g_SubList, index, subList()\lineNr)
 		index + 1
 	Next
 	
-	AddGadgetItem(#g_Sub, index, "")
-	SetGadgetItemData(#g_Sub, index, -1)
-	index + 1
+	If MapSize(Parser\field()) > 0
+		index = 0
+		ForEach Parser\field()
+			AddGadgetItem(#g_FieldList, index, TokenText(Parser\field()\token))
+			SetGadgetItemData(#g_FieldList, index, Parser\field()\lineNr)
+			index + 1
+		Next
+	EndIf
 	
-	ForEach Parser\field()
-		AddGadgetItem(#g_Sub, index, TokenText(Parser\field()\token))
-		SetGadgetItemData(#g_Sub, index, Parser\field()\lineNr)
-		index + 1
-	Next
+	If MapSize(Parser\label()) > 0
+		index = 0
+		ForEach Parser\label()
+			AddGadgetItem(#g_LabelList, index, TokenText(Parser\label()\token))
+			SetGadgetItemData(#g_LabelList, index, Parser\label()\lineNr)
+			index + 1
+		Next
+	EndIf
 EndProcedure
 
 Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
@@ -2169,18 +2215,21 @@ EndProcedure
 
 Procedure Parse_AddSound(*variable.VARIABLE, path.s)
 	Protected key.s = UCase(Parser\curVar\name)
+	path = ReplaceString(path, "\", "/")
 	
-	If FindMapElement(System\sound(), key) 
-		SETVAL(*variable\adr, System\sound())
-	ElseIf AddMapElement(System\sound(), key)
-		System\sound() = LoadSound(#PB_Any, path)
-		If IsSound(System\sound())
+	If SoundSystemOK
+		If FindMapElement(System\sound(), key) 
 			SETVAL(*variable\adr, System\sound())
+		ElseIf AddMapElement(System\sound(), key)
+			System\sound() = LoadSound(#PB_Any, path)
+			If IsSound(System\sound())
+				SETVAL(*variable\adr, System\sound())
+			Else
+				System_Error(Parser\curLine, "sound not loaded: "+ path, #True)
+			EndIf
 		Else
-			System_Error(Parser\curLine, "sound not loaded: "+ path, #True)
+			System_Error(Parser\curLine, "Parse_AddSound: couldn't add Map element")
 		EndIf
-	Else
-		System_Error(Parser\curLine, "Parse_AddSound: couldn't add Map element")
 	EndIf
 EndProcedure
 
@@ -2223,7 +2272,7 @@ Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLoca
 	
 	
 	If *token\type = #T_RGB
-
+		
 		Protected tokenIndex
 		Protected colR, colG, colB
 		If Parse_NextToken(#T_BRACKET_OPEN, #True)
@@ -2241,7 +2290,7 @@ Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLoca
 				Parse_WriteI(RGB(colR, colG, colB), #SYM_INT, *token)
 			EndIf
 		EndIf
-
+		
 	ElseIf *token\type = #T_SUB
 		
 		If createNew
@@ -2996,6 +3045,570 @@ EndProcedure
 
 ;-
 
+Procedure OP_GET() ; write address of variable to V-Register
+	GETVAL_WRITE(System\nextIP, *CPU\V)
+EndProcedure
+Procedure OP_SET() ; write value to address in V-Register
+	GETVAL_READ(System\nextIP, valF1)
+	SETVAL(*CPU\V, valF1)
+EndProcedure
+Procedure OP_ADD()
+	MATH_F(+)
+EndProcedure
+Procedure OP_SUB()
+	MATH_F(-)
+EndProcedure
+Procedure OP_MUL()
+	MATH_F(*)
+EndProcedure
+Procedure OP_DIV()
+	GETVAL_READ(System\nextIP, valF2)
+	If valF2 = 0
+		System_Error(System_LineNrByIP(*CPU\IP), "Division by zero")
+	Else
+		GETVAL(*CPU\V, valF1)
+		SETVAL(*CPU\V, valF1 / valF2)
+	EndIf
+EndProcedure
+Procedure OP_SQR()
+	GETVAL(*CPU\V, valF1)
+	If valF1 < 0
+		System_Error(System_LineNrByIP(*CPU\IP), "Square root of negative number")
+	Else
+		SETVAL(*CPU\V, Sqr(valF1))
+	EndIf
+EndProcedure
+Procedure OP_POW()
+	GETVAL(*CPU\V, valF1)
+	GETVAL_READ(System\nextIP, valF2)
+	SETVAL(*CPU\V, Pow(valF1, valF2))
+EndProcedure
+Procedure OP_SHL()
+	MATH_I(<<)
+EndProcedure
+Procedure OP_SHR()
+	MATH_I(>>)
+EndProcedure
+Procedure OP_AND()
+	MATH_I(&)
+EndProcedure
+Procedure OP__OR()
+	MATH_I(|)
+EndProcedure
+Procedure OP_MOD()
+	MATH_I(%)
+EndProcedure
+Procedure OP_NEG()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, -valF1)
+EndProcedure
+Procedure OP_INT()
+	GETVAL(*CPU\V, valI1)
+	SETVAL(*CPU\V, valI1)
+EndProcedure
+Procedure OP_NTH()
+	GETVAL(*CPU\V, valI1)
+	valS = Str(valI1)
+	GETVAL_READ(System\nextIP, valI2)
+	valI1 = Len(valS)
+	If valI2 >= valI1
+		SETVAL(*CPU\V, 0)
+	Else
+		SETVAL(*CPU\V, Val(Mid(valS, valI1 - valI2, 1)))
+	EndIf
+EndProcedure
+Procedure OP_SGN()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, Sign(valF1))
+EndProcedure
+Procedure OP_CIL()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, Round(valF1, #PB_Round_Up))
+EndProcedure
+Procedure OP_ABS()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, Abs(valF1))
+EndProcedure
+Procedure OP_MIN()
+	GETVAL(*CPU\V, valF1)
+	GETVAL_READ(System\nextIP, valF2)
+	If valF1 < valF2
+		SETVAL(*CPU\V, valF2)
+		*CPU\FLAGS = 1
+	Else
+		*CPU\FLAGS = 0
+	EndIf
+EndProcedure
+Procedure OP_MAX()
+	GETVAL(*CPU\V, valF1)
+	GETVAL_READ(System\nextIP, valF2)
+	If valF1 > valF2
+		SETVAL(*CPU\V, valF2)
+		*CPU\FLAGS = 1
+	Else
+		*CPU\FLAGS = 0
+	EndIf
+EndProcedure
+Procedure OP_RSD()
+	GETVAL_READ(System\nextIP, valI1)
+	RandomSeed(valI1)
+EndProcedure
+Procedure OP_RND()
+	SETVAL(*CPU\V, Random(10000000) / 10000000.0)
+EndProcedure
+Procedure OP_SIN()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, Sin(valF1))
+EndProcedure
+Procedure OP_COS()
+	GETVAL(*CPU\V, valF1)
+	SETVAL(*CPU\V, Cos(valF1))
+EndProcedure
+Procedure OP_IFL()
+	GETVAL_READ(System\nextIP, valI1)
+	If *CPU\FLAGS = valI1
+		System\nextIP + 1
+	Else
+		GETVAL(System\nextIP, System\nextIP)
+	EndIf
+EndProcedure
+Procedure OP_IGR()
+	COMPARE(>, #FLAG_GREATER, #FLAG_LOWER | #FLAG_EQUAL)
+EndProcedure
+Procedure OP_ILO()
+	COMPARE(<, #FLAG_LOWER, #FLAG_GREATER | #FLAG_EQUAL)
+EndProcedure
+Procedure OP_IEQ()
+	COMPARE(=, #FLAG_EQUAL, #FLAG_NOTEQUAL)
+EndProcedure
+Procedure OP_IGE()
+	COMPARE(>=, #FLAG_GREATER | #FLAG_EQUAL, #FLAG_LOWER)
+EndProcedure
+Procedure OP_ILE()
+	COMPARE(<=, #FLAG_LOWER | #FLAG_EQUAL, #FLAG_GREATER)
+EndProcedure
+Procedure OP_INE()
+	COMPARE(<>, #FLAG_NOTEQUAL, #FLAG_EQUAL)
+EndProcedure
+Procedure OP_JMF()
+	GETVAL_READ(System\nextIP, valF1)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valF2)
+	If *CPU\FLAGS = valF1
+		System\nextIP = valF2
+	EndIf
+EndProcedure
+Procedure OP_JMP()
+	GETVAL_READ(System\nextIP, valI1)
+	System\nextIP = valI1
+EndProcedure
+Procedure OP_PSH() ; push value
+	GETVAL_READ(System\nextIP, valF1)
+	PUSH(valF1)
+EndProcedure
+Procedure OP_POP() ; pop value
+	GETVAL_WRITE(System\nextIP, valAdr)
+	POP(valF1)
+	SETVAL(valAdr, valF1)
+EndProcedure
+Procedure OP_PUI() ; push instruction pointer
+	Push(System\nextIP)
+EndProcedure
+Procedure OP_POI() ; pop instruction pointer
+	POP(System\nextIP)
+EndProcedure
+Procedure OP_PUS() ; push stack pointer
+	Push(*CPU\SP)
+EndProcedure
+Procedure OP_POS() ; pop stack pointer
+	POP(*CPU\SP)
+EndProcedure
+Procedure OP_PUF() ; push flags
+	PUSH(*CPU\FLAGS)
+EndProcedure
+Procedure OP_POF() ; pop flags
+	POP(*CPU\FLAGS)
+EndProcedure
+Procedure OP_PUV() ; push V Register
+	PUSH(*CPU\V)
+EndProcedure
+Procedure OP_POV() ; pop V Register
+	POP(*CPU\V)
+EndProcedure
+Procedure OP_ADS() ; add value to stack pointer
+	GETVAL_READ(System\nextIP, valI1)
+	*CPU\SP + valI1
+EndProcedure
+Procedure OP_SCR() ; open screen
+	GETVAL_READ(System\nextIP, System\SCR_Width)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, System\SCR_Height)
+	
+	System\SCR_Width = CLAMP(System\SCR_Width, 1, 1000)
+	System\SCR_Height = CLAMP(System\SCR_Height, 1, 1000)
+	System\VRAM_Size = System\SCR_Width * System\SCR_Height
+	
+	Dim *CPU\VRAM(System\VRAM_Size)
+	
+	If IsWindow(#w_Screen)
+		System_CloseScreen(#True)
+		
+		ResizeWindow(#w_Screen, #PB_Ignore, #PB_Ignore, System\SCR_Width * System\SCR_PixelSize, System\SCR_Height * System\SCR_PixelSize)
+		System\SCR_Active = OpenWindowedScreen(WindowID(#w_Screen), 0, 0, System\SCR_Width, System\SCR_Height, 1, 0, 0, #PB_Screen_NoSynchronization)
+		
+		If *CurrentFile
+			SetWindowTitle(#w_Screen, *CurrentFile\path)
+		EndIf
+		
+		If System\SCR_Active
+			ClearScreen(0)
+			FlipBuffers()
+			ReleaseMouse(1)
+		EndIf
+		
+		System\SCR_Visible = #True
+		HideWindow(#w_Screen, 0)
+		SetActiveWindow(#w_Screen)
+	EndIf
+EndProcedure
+Procedure OP_CLS() ; clear screen
+	GETVAL(System\ADR_COL_Front, valL)
+	ClearScreen(RGB(25,25,50))
+	valI2 = ArraySize(*CPU\VRAM())
+	If valI2 >= 0
+		FillMemory(@*CPU\VRAM(0), valI2 * SizeOf(Long), valL, TypeOf(valL))
+	EndIf
+EndProcedure
+Procedure OP_BMS() ; set char size
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_BMP_W, valI1)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_BMP_H, valI1)
+EndProcedure
+Procedure OP_BMM() ; set char mode
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_BMP_MODE, valI1)
+EndProcedure
+Procedure OP_BXY() ; set char position
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_BMP_X, valI1)
+	
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_BMP_Y, valI1)
+EndProcedure
+Procedure OP_BMO() ; move char position
+	GETVAL_READ(System\nextIP, valI1)
+	GETVAL(System\ADR_BMP_X, valI2)
+	SETVAL(System\ADR_BMP_X, valI1 + valI2)
+	
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valI1)
+	GETVAL(System\ADR_BMP_Y, valI2)
+	SETVAL(System\ADR_BMP_Y, valI1 + valI2)
+EndProcedure
+Procedure OP_BMP() ; draw bitmap
+	Static source, x, y, bx, by
+	Static bmpW, bmpH, bmpX, bmpY, bmpMode, scrW, scrH
+	Static adrR, adrV, adrStart, adrAdd, adrSub
+	Static color, collision, colID, colF, colB
+	
+	GETVAL_READ(System\nextIP, source)
+	
+	If source >= 0 And source < System\RAM_Size
+		scrW = System\SCR_Width
+		scrH = System\SCR_Height
+		GETVAL(System\ADR_Collision, collision)
+		GETVAL(System\ADR_COL_Front, colF)
+		GETVAL(System\ADR_COL_Back, colB)
+		GETVAL(System\ADR_BMP_X, bmpX)
+		GETVAL(System\ADR_BMP_Y, bmpY)
+		GETVAL(System\ADR_BMP_W, bmpW)
+		GETVAL(System\ADR_BMP_H, bmpH)
+		GETVAL(System\ADR_BMP_MODE, bmpMode)
+		GETVAL(System\ADR_CollisionID, colID)
+		colID << 8
+		
+		bmpW - 1
+		bmpH - 1
+		
+		Select bmpMode
+			Case 0 ; normal mode
+				adrStart = source
+				adrAdd = 1
+				adrSub = 0
+			Case 1 ; rotate 90°
+				adrStart = source + bmpH * (bmpW + 1)
+				adrAdd = -(bmpW + 1)
+				adrSub = (bmpW + 1) * (bmpH + 1) + 1
+				Swap bmpW, bmpH
+			Case 2 ; rotate 180°
+				adrStart = source + (bmpW + 1) * (bmpH + 1) - 1
+				adrAdd = -1
+				adrSub = 0
+			Case 3 ; rotate 270°
+				adrStart = source + bmpW
+				adrAdd = bmpW + 1
+				adrSub = -(bmpW + 1) * (bmpH + 1) - 1
+				Swap bmpW, bmpH
+			Case 4 ; flip x-axis
+				adrStart = source + bmpW
+				adrAdd = -1
+				adrSub =  bmpW * 2 + 2
+			Case 5 ; flip y-axis
+				adrStart = source + bmpH * (bmpW + 1)
+				adrAdd = 1
+				adrSub = -(bmpW + 1) * 2
+			Default ; normal mode
+				adrStart = source
+				adrAdd = 1
+				adrSub = 0
+		EndSelect
+		
+		If colF
+			
+			adrR = adrStart
+			by = bmpY
+			For y = 0 To bmpH
+				bx = bmpX
+				adrV = bx + by * scrW
+				For x = 0 To bmpW
+					If bx >= 0 And bx < scrW And by >= 0 And by < scrH
+						color = *CPU\RAM(adrR)
+						If color
+							If collision = 0
+								collision = *CPU\VRAM(adrV)
+								If collision & $FF00 ; collision found! 
+									collision >> 8
+									SETVAL(System\ADR_Collision, collision)
+								EndIf
+							EndIf
+							color | colID ; add collision ID to the color
+							*CPU\VRAM(adrV) = colF
+						Else
+							*CPU\VRAM(adrV) = colB
+						EndIf
+					EndIf
+					adrR + adrAdd
+					adrV + 1
+					bx + 1
+				Next
+				adrR + adrSub
+				by + 1
+			Next
+			
+		Else		
+			
+			adrR = adrStart
+			by = bmpY
+			For y = 0 To bmpH
+				bx = bmpX
+				adrV = bx + by * scrW
+				For x = 0 To bmpW
+					If bx >= 0 And bx < scrW And by >= 0 And by < scrH
+						color = *CPU\RAM(adrR)
+						If color
+							If collision = 0
+								collision = *CPU\VRAM(adrV) >> 8
+								If collision
+									SETVAL(System\ADR_Collision, collision)
+								EndIf
+							EndIf
+							color | colID ; add collision ID to the color
+							*CPU\VRAM(adrV) = color
+						ElseIf colB
+							*CPU\VRAM(adrV) = colB
+						EndIf
+					EndIf
+					adrR + adrAdd
+					adrV + 1
+					bx + 1
+				Next
+				adrR + adrSub
+				by + 1
+			Next
+			
+		EndIf
+	EndIf
+EndProcedure
+Procedure OP_PAL() ; set palette mode on/off
+	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_Palette))
+EndProcedure
+Procedure OP_CLF() ; set front color
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_COL_Front, valI1)
+EndProcedure
+Procedure OP_CLB() ; set back color
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_COL_Back, valI1)
+EndProcedure
+Procedure OP_PLT()
+	Static x, y, adr
+	
+	GETVAL_READ(System\nextIP, x)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, y)
+	adr = x + y * System\SCR_Width
+	If adr >= 0 And adr < System\VRAM_Size
+		GETVAL(System\ADR_COL_Front, *CPU\VRAM(adr))
+	EndIf
+EndProcedure
+Procedure OP_DRW()
+	Static x, y, scrW, scrH, adrV, c.a, palette
+	
+	If System\SCR_Active
+		GETVAL(System\ADR_Palette, palette)
+		If StartDrawing(ScreenOutput())
+			scrW = System\SCR_Width - 1
+			scrH = System\SCR_Height - 1
+			adrV = 0
+			
+			If palette = 0
+				For y = 0 To scrH
+					For x = 0 To scrW
+						Plot(x, y, *CPU\VRAM(adrV))
+						adrV + 1
+					Next
+				Next
+			Else
+				For y = 0 To scrH
+					For x = 0 To scrW
+						c = *CPU\VRAM(adrV) 
+						Plot(x, y, *CPU\RAM(System\ADR_Color + c))
+						adrV + 1
+					Next
+				Next
+			EndIf
+			StopDrawing()
+			FlipBuffers()
+		EndIf
+	EndIf
+EndProcedure
+Procedure OP_DLY()
+	Static curIP, nextIP
+	
+	If System\wait = 0
+		curIP = System\nextIP
+		GETVAL_READ(System\nextIP, valI1)
+		nextIP = System\nextIP
+		System\wait = System\time + valI1
+		nextIP = System\nextIP
+		System\nextIP = curIP
+	ElseIf System\time >= System\wait
+		System\wait = 0
+		System\nextIP = nextIP
+	Else
+		Delay(5)
+	EndIf
+EndProcedure
+Procedure OP_INP()
+	If System\SCR_Active
+		ExamineMouse()
+		ExamineKeyboard()
+		
+		*CPU\FLAGS = KeyboardPushed(#PB_Key_All)
+		
+		;  		SETVAL(System\ADR_MOUSE_X, DesktopUnscaledX(WindowMouseX(#w_Screen)) * System\SCR_PixelSize)
+		;  		SETVAL(System\ADR_MOUSE_Y, DesktopUnscaledY(WindowMouseY(#w_Screen)) * System\SCR_PixelSize)
+		SETVAL(System\ADR_MOUSE_X, WindowMouseX(#w_Screen) * (System\SCR_Width / WindowWidth(#w_Screen)))
+		SETVAL(System\ADR_MOUSE_Y, WindowMouseY(#w_Screen) * (System\SCR_Height / WindowHeight(#w_Screen)))
+		Static mouseB = 0
+		
+		If MouseButton(#PB_MouseButton_Left)
+			mouseB | #Button_Left
+		EndIf
+		If MouseButton(#PB_MouseButton_Right)
+			mouseB | #Button_Right
+		EndIf
+		
+		SETVAL(System\ADR_MOUSE_B, mouseB)
+	Else
+		*CPU\FLAGS = 0
+	EndIf
+EndProcedure
+Procedure OP_KEY()
+	GETVAL_READ(System\nextIP, valI1)
+	*CPU\FLAGS = Bool(KeyboardPushed(valI1))
+EndProcedure
+Procedure OP_SNP()
+	GETVAL_READ(System\nextIP, valI1)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valI2)
+	
+	If SoundSystemOK
+		If valI1
+			If IsSound(valI1)
+				If valI2 = 0
+					StopSound(valI1)
+				ElseIf valI2 = 2
+					PauseSound(valI1)
+				Else
+					PlaySound(valI1)
+				EndIf
+			EndIf
+		Else
+			If valI2 = 2
+				PauseSound(#PB_All)
+			Else
+				StopSound(#PB_All)
+			EndIf
+		EndIf
+	EndIf
+EndProcedure
+Procedure OP_SNS()
+	GETVAL_READ(System\nextIP, valI1)
+	
+	If SoundSystemOK
+		*CPU\FLAGS = -1
+		If IsSound(valI1)
+			Select SoundStatus(valI1)
+				Case #PB_Sound_Stopped : *CPU\FLAGS = 0
+				Case #PB_Sound_Playing : *CPU\FLAGS = 1
+				Case #PB_Sound_Paused : *CPU\FLAGS = 2
+			EndSelect
+		EndIf
+	EndIf
+EndProcedure
+Procedure OP_DBG()
+	Static *token.TOKEN
+	
+	GETVAL_READ(System\nextIP, *token)
+	GETNEXTADRMODE()
+	GETVAL_READ(System\nextIP, valF1)
+	
+	valS = GetGadgetItemText(#g_Debug, CountGadgetItems(#g_Debug) - 1)
+	If *token
+		valI1 = ValF1
+		valS + Trim(TokenText(*token), #DOUBLEQUOTE$)
+		valS = ReplaceString(valS, "%i", Str(valI1))
+		valS = ReplaceString(valS, "%c", Str(valI1 % 255))
+		valS = ReplaceString(valS, "%f", StrD(valF1))
+	Else
+		valS = StrD(valF1)
+	EndIf
+	
+	RemoveGadgetItem(#g_Debug, CountGadgetItems(#g_Debug) - 1)
+	AddGadgetItem(#g_Debug, -1, ReplaceString(valS, "\n", #NL$))
+	HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
+EndProcedure
+Procedure OP_HLT()
+	System_Error(System_LineNrByIP(*CPU\IP) + 1, "HALT - PROGRAM PAUSED!", #True)
+	System_RunState((RunState & ~(#STATE_PAUSE | #STATE_STEPOUT)) | (#STATE_STEP | #STATE_RUN))
+EndProcedure
+Procedure OP_END()
+	System\state | #STATE_END
+	System_CloseScreen(#True)
+	System_RunState(0)
+EndProcedure
+Procedure OP_KIL()			
+	GETVAL(*CPU\IP, valF1)
+	System_Error(System_LineNrByIP(*CPU\IP), "Illegal opcode: " + FSTR(valF1))
+	System\state | #STATE_END
+	System_RunState(0)
+EndProcedure
+;-
+
 Procedure Parse_First(*sub.SUB, readState, depth)
 	; find subs, fields, constants, variables
 	
@@ -3663,7 +4276,9 @@ Procedure Event_Gadget()
 		Case #PB_Event_Gadget
 			Select EventGadget()
 				Case #g_FilePanel
-					If EventType() = #PB_EventType_Change
+					If EventData() = 0
+						PostEvent(#PB_Event_Gadget, EventWindow(), EventGadget(), #PB_EventType_Change, 1)
+					Else
 						System\state | #STATE_SILENT
 						File_Activate(GetGadgetItemData(#g_FilePanel, GetGadgetState(#g_FilePanel)), -1, #True)
 						System\state & ~#STATE_SILENT
@@ -3679,9 +4294,9 @@ Procedure Event_Gadget()
 					EndIf
 				Case #g_VarSort
 					System_Update_VarList(Parser\main, #False, #True)
-				Case #g_Sub
+				Case #g_SubList, #g_FieldList, #g_LabelList
 					If EventType() = #PB_EventType_LeftDoubleClick
-						System_GotoLine(GetGadgetItemData(#g_Sub, GetGadgetState(#g_Sub)))
+						System_GotoLine(GetGadgetItemData(EventGadget(), GetGadgetState(EventGadget())))
 						If *CurrentFile And IsGadget(*CurrentFile\editor)
 							SetActiveGadget(*CurrentFile\editor)
 						EndIf
@@ -3704,8 +4319,29 @@ Procedure Event_Gadget()
 	EndSelect
 EndProcedure
 
+Procedure ResizeGadget_(gadget, x, y, w, h)
+	If x = #PB_Ignore
+		x = GadgetX(gadget)
+	EndIf
+	If y = #PB_Ignore
+		y = GadgetY(gadget)
+	EndIf
+	If w = #PB_Ignore
+		w = GadgetWidth(gadget)
+	EndIf
+	If h = #PB_Ignore
+		h = GadgetHeight(gadget)
+	EndIf
+	If x = GadgetX(gadget) And y = GadgetY(gadget) And w = GadgetWidth(gadget) And h = GadgetHeight(gadget)
+		ProcedureReturn #False
+	EndIf
+	ResizeGadget(gadget, x, y, w, h)
+	ProcedureReturn #True
+EndProcedure
+
 Procedure Event_Window()
-	Protected x, y, w, h
+	Protected w, h
+	
 	Select Event()
 		Case #PB_Event_CloseWindow
 			Select EventWindow()
@@ -3724,39 +4360,28 @@ Procedure Event_Window()
 		Case #PB_Event_SizeWindow
 			Select EventWindow()
 				Case #w_Main
-					y = ToolBarHeight(#t_Main) + MenuHeight()
-					ResizeGadget(#g_SplitterEditorV, 5, ToolBarHeight(#t_Main), WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - StatusBarHeight(0) - y)
-					;ResizeGadget(#g_SearchContainer, #PB_Ignore, #PB_Ignore, #PB_Ignore, #PB_Ignore)
-					ResizeGadget(#g_Sub, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SubContainer), GadgetHeight(#g_SubContainer) - 30)
+					CompilerIf #PB_Compiler_OS = #PB_OS_Windows
+						ResizeGadget_(#g_SplitterEditorV, 5, ToolBarHeightMain, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) + MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+					CompilerElse
+						ResizeGadget_(#g_SplitterEditorV, 5, 0, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) + MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+					CompilerEndIf
+					ResizeGadget_(#g_SectionPanel, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SubContainer), GadgetHeight(#g_SubContainer) - 30)
 					w = GetGadgetState(#g_SplitterEditorV)
 					h = GetGadgetState(#g_SplitterEditorH)
 					ForEach File()
 						ResizeGadget(File()\editor, 0, 0, w, h)
 					Next
-				Case #w_Screen
-					If EventData()
-						x = WindowX(#w_Main) + (WindowWidth(#w_Main) - WindowWidth(#w_Screen)) * 0.5
-						y = WindowY(#w_Main) + (WindowHeight(#w_Main) - WindowHeight(#w_Screen)) * 0.5
-					Else
-						x = #PB_Ignore
-						y = #PB_Ignore
-					EndIf
-					Protected aspect.d = System\SCR_Width / System\SCR_Height
-					ResizeWindow(#w_Screen, x, y, WindowHeight(#w_Screen) * aspect, #PB_Ignore)
-					
-					If WindowWidth(#w_Screen, #PB_Window_InnerCoordinate)
-						System\SCR_PixelSize = System\SCR_Width / WindowWidth(#w_Screen, #PB_Window_InnerCoordinate)
-					EndIf
+					ResizeGadget_(#g_SubList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
+					ResizeGadget_(#g_FieldList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
+					ResizeGadget_(#g_LabelList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
 				Case #w_Monitor
-					y = ToolBarHeight(#t_Monitor)
-					ResizeGadget(#g_SplitterMonitor, 0, y, WindowWidth(#w_Monitor), WindowHeight(#w_Monitor) - y)
-					x = GadgetWidth(#g_VarContainer) - 10
-					ResizeGadget(#g_VarSort, 5, 5, x, 25)
-					ResizeGadget(#g_Variables, 5, 30, x, GadgetHeight(#g_SplitterMonitor) - 35)
+					ResizeGadget_(#g_SplitterMonitor, 0, ToolBarHeightMonitor, WindowWidth(#w_Monitor), WindowHeight(#w_Monitor) - ToolBarHeightMonitor)
+					ResizeGadget_(#g_VarSort, 5, 5, GadgetWidth(#g_VarContainer) - 10, 25)
+					ResizeGadget_(#g_Variables, 5, 30, GadgetWidth(#g_VarContainer) - 10, GadgetHeight(#g_SplitterMonitor) - 35)
 				Case #w_Debug
-					ResizeGadget(#g_Debug, 0, 0, WindowWidth(#w_Debug), WindowHeight(#w_Debug))
+					ResizeGadget_(#g_Debug, 0, 0, WindowWidth(#w_Debug), WindowHeight(#w_Debug))
 				Case #w_Help
-					ResizeGadget(#g_Help, 5, 5, WindowWidth(#w_Help) - 10, WindowHeight(#w_Help) - 10)
+					ResizeGadget_(#g_Help, 5, 5, WindowWidth(#w_Help) - 10, WindowHeight(#w_Help) - 10)
 			EndSelect
 	EndSelect
 EndProcedure
@@ -3771,7 +4396,6 @@ Repeat
 	If (RunState & #STATE_RUN) And (RunState & #STATE_PAUSE) = 0
 		
 		Counter + 1
-		
 		If (Counter > 250) Or (RunState & (#STATE_PAUSE))
 			Counter = 0
 			event = WindowEvent()
@@ -3786,502 +4410,10 @@ Repeat
 			VarAddIP = 0
 			mem = *CPU\RAM(*CPU\IP)
 			opcode = mem & $FF
-			System\adrMode = (mem >> 8) & $FF		
+			System\adrMode = (mem >> 8) & $FF
 			System\nextIP = *CPU\IP + 1
 			
-			Select opcode ;- RUN
-				Case #OP_GET ; variable to V-Register
-					GETVAL_WRITE(System\nextIP, *CPU\V)
-				Case #OP_SET ; value to variable in V-Register
-					GETVAL_READ(System\nextIP, valF1)
-					SETVAL(*CPU\V, valF1)
-				Case #OP_ADD
-					MATH_F(+)
-				Case #OP_SUB
-					MATH_F(-)
-				Case #OP_MUL
-					MATH_F(*)
-				Case #OP_DIV
-					GETVAL(*CPU\V, valF1)
-					GETVAL_READ(System\nextIP, valF2)
-					If valF2 = 0
-						System_Error(System_LineNrByIP(*CPU\IP), "Division by zero")
-					Else
-						valF1 / valF2
-						SETVAL(*CPU\V, valF1)
-					EndIf
-				Case #OP_SQR
-					GETVAL(*CPU\V, valF1)
-					If valF1 < 0
-						System_Error(System_LineNrByIP(*CPU\IP), "Square root of negative number")
-					Else
-						SETVAL(*CPU\V, Sqr(valF1))
-					EndIf
-				Case #OP_POW
-					GETVAL(*CPU\V, valF1)
-					GETVAL_READ(System\nextIP, valF2)
-					SETVAL(*CPU\V, Pow(valF1, valF2))
-				Case #OP_SHL
-					MATH_I(<<)
-				Case #OP_SHR
-					MATH_I(>>)
-				Case #OP_AND
-					MATH_I(&)
-				Case #OP__OR
-					MATH_I(|)
-				Case #OP_MOD
-					MATH_I(%)
-				Case #OP_NEG
-					GETVAL(*CPU\V, valF1)
-					SETVAL(*CPU\V, -valF1)
-				Case #OP_INT
-					GETVAL(*CPU\V, valI1)
-					SETVAL(*CPU\V, valI1)
-				Case #OP_NTH
-					GETVAL(*CPU\V, valI1)
-					valS = Str(valI1)
-					GETVAL_READ(System\nextIP, valI2)
-					valI1 = Len(valS)
-					If valI2 >= valI1
-						SETVAL(*CPU\V, 0)
-					Else
-						SETVAL(*CPU\V, Val(Mid(valS, valI1 - valI2, 1)))
-					EndIf
-				Case #OP_SGN
-					GETVAL(*CPU\V, valF1)
-					SETVAL(*CPU\V, Sign(valF1))
-				Case #OP_CIL
-					GETVAL(*CPU\V, valF1)
-					SETVAL(*CPU\V, Round(valF1, #PB_Round_Up))
-				Case #OP_ABS
-					GETVAL(*CPU\V, valF1)
-					SETVAL(*CPU\V, Abs(valF1))
-				Case #OP_MIN
-					GETVAL(*CPU\V, valF1)
-					GETVAL_READ(System\nextIP, valF2)
-					If valF1 < valF2
-						SETVAL(*CPU\V, valF2)
-						*CPU\FLAGS = 1
-					Else
-						*CPU\FLAGS = 0
-					EndIf
-				Case #OP_MAX
-					GETVAL(*CPU\V, valF1)
-					GETVAL_READ(System\nextIP, valF2)
-					If valF1 > valF2
-						SETVAL(*CPU\V, valF2)
-						*CPU\FLAGS = 1
-					Else
-						*CPU\FLAGS = 0
-					EndIf
-				Case #OP_RSD
-					GETVAL_READ(System\nextIP, valI1)
-					RandomSeed(valI1)
-				Case #OP_RND
-					SETVAL(*CPU\V, Random(10000000) / 10000000.0)
-				Case #OP_IFL
-					GETVAL_READ(System\nextIP, valI1)
-					If *CPU\FLAGS = valI1
-						System\nextIP + 1
-					Else
-						GETVAL(System\nextIP, System\nextIP)
-					EndIf
-				Case #OP_IGR
-					COMPARE(>, #FLAG_GREATER, #FLAG_LOWER | #FLAG_EQUAL)
-				Case #OP_ILO
-					COMPARE(<, #FLAG_LOWER, #FLAG_GREATER | #FLAG_EQUAL)
-				Case #OP_IEQ
-					COMPARE(=, #FLAG_EQUAL, #FLAG_NOTEQUAL)
-				Case #OP_IGE
-					COMPARE(>=, #FLAG_GREATER | #FLAG_EQUAL, #FLAG_LOWER)
-				Case #OP_ILE
-					COMPARE(<=, #FLAG_LOWER | #FLAG_EQUAL, #FLAG_GREATER)
-				Case #OP_INE
-					COMPARE(<>, #FLAG_NOTEQUAL, #FLAG_EQUAL)
-				Case #OP_JMF
-					GETVAL_READ(System\nextIP, valF1)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valF2)
-					If *CPU\FLAGS = valF1
-						System\nextIP = valF2
-					EndIf
-				Case #OP_JMP
-					GETVAL_READ(System\nextIP, valI1)
-					System\nextIP = valI1
-				Case #OP_PSH
-					; push value
-					GETVAL_READ(System\nextIP, valF1)
-					PUSH(valF1)
-				Case #OP_POP
-					; pop value
-					GETVAL_WRITE(System\nextIP, valAdr)
-					POP(valF1)
-					SETVAL(valAdr, valF1)
-				Case #OP_PUI ; push instruction pointer
-					Push(System\nextIP)
-				Case #OP_POI ; pop instruction pointer
-					POP(System\nextIP)
-				Case #OP_PUS ; push stack pointer
-					Push(*CPU\SP)
-				Case #OP_POS ; pop stack pointer
-					POP(*CPU\SP)
-				Case #OP_PUF ; push flags
-					PUSH(*CPU\FLAGS)
-				Case #OP_POF ; pop flags
-					POP(*CPU\FLAGS)
-				Case #OP_PUV ; push V Register
-					PUSH(*CPU\V)
-				Case #OP_POV ; pop V Register
-					POP(*CPU\V)
-				Case #OP_ADS ; add value to stack pointer
-					GETVAL_READ(System\nextIP, valI1)
-					*CPU\SP + valI1
-				Case #OP_SCR ; open screen
-					GETVAL_READ(System\nextIP, System\SCR_Width)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, System\SCR_Height)
-					
-					System\SCR_Width = CLAMP(System\SCR_Width, 1, 1000)
-					System\SCR_Height = CLAMP(System\SCR_Height, 1, 1000)
-					System\VRAM_Size = System\SCR_Width * System\SCR_Height
-					
-					Dim *CPU\VRAM(System\VRAM_Size)
-					
-					If IsWindow(#w_Screen)
-						System_CloseScreen(#True)
-						System\SCR_Active = OpenWindowedScreen(WindowID(#w_Screen), 0, 0, System\SCR_Width, System\SCR_Height, 1, 0, 0, #PB_Screen_NoSynchronization)
-						
-						If *CurrentFile
-							SetWindowTitle(#w_Screen, *CurrentFile\path)
-						EndIf
-						
-						SetWindowState(#w_Screen, #PB_Window_Maximize)
-						PostEvent(#PB_Event_SizeWindow, #w_Screen, 0, 0, 1)
-						
-						If System\SCR_Active
-							ClearScreen(0)
-							FlipBuffers()
-							ReleaseMouse(1)
-						EndIf
-						
-						System\SCR_Visible = #True
-						HideWindow(#w_Screen, 0)
-					EndIf
-				Case #OP_CLS ; clear screen
-					GETVAL(System\ADR_COL_Front, valL)
-					ClearScreen(RGB(25,25,50))
-					valI2 = ArraySize(*CPU\VRAM())
-					If valI2 >= 0
-						FillMemory(@*CPU\VRAM(0), valI2 * SizeOf(long), valL, TypeOf(valL))
-					EndIf
-				Case #OP_BMS ; set char size
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_BMP_W, valI1)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_BMP_H, valI1)
-				Case #OP_BMM ; set char mode
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_BMP_MODE, valI1)				
-				Case #OP_BXY ; set char position
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_BMP_X, valI1)
-					
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_BMP_Y, valI1)
-				Case #OP_BMO ; move char position
-					GETVAL_READ(System\nextIP, valI1)
-					GETVAL(System\ADR_BMP_X, valI2)
-					SETVAL(System\ADR_BMP_X, valI1 + valI2)
-					
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valI1)
-					GETVAL(System\ADR_BMP_Y, valI2)
-					SETVAL(System\ADR_BMP_Y, valI1 + valI2)
-				Case #OP_BMP ; write char
-					Define source, x, y, bx, by
-					Define bmpW, bmpH, bmpX, bmpY, bmpMode, scrW, scrH
-					Define adrR, adrV, adrStart, adrAdd, adrSub
-					Define color, collision, colID, colF, colB
-					
-					GETVAL_READ(System\nextIP, source)
-					
-					If source >= 0 And source < System\RAM_Size
-						scrW = System\SCR_Width
-						scrH = System\SCR_Height
-						GETVAL(System\ADR_Collision, collision)
-						GETVAL(System\ADR_COL_Front, colF)
-						GETVAL(System\ADR_COL_Back, colB)
-						GETVAL(System\ADR_BMP_X, bmpX)
-						GETVAL(System\ADR_BMP_Y, bmpY)
-						GETVAL(System\ADR_BMP_W, bmpW)
-						GETVAL(System\ADR_BMP_H, bmpH)
-						GETVAL(System\ADR_BMP_MODE, bmpMode)
-						GETVAL(System\ADR_CollisionID, colID)
-						colID << 8
-						
-						bmpW - 1
-						bmpH - 1
-						
-						Select bmpMode
-							Case 0 ; normal mode
-								adrStart = source
-								adrAdd = 1
-								adrSub = 0
-							Case 1 ; rotate 90°
-								adrStart = source + bmpH * (bmpW + 1)
-								adrAdd = -(bmpW + 1)
-								adrSub = (bmpW + 1) * (bmpH + 1) + 1
-								Swap bmpW, bmpH
-							Case 2 ; rotate 180°
-								adrStart = source + (bmpW + 1) * (bmpH + 1) - 1
-								adrAdd = -1
-								adrSub = 0
-							Case 3 ; rotate 270°
-								adrStart = source + bmpW
-								adrAdd = bmpW + 1
-								adrSub = -(bmpW + 1) * (bmpH + 1) - 1
-								Swap bmpW, bmpH
-							Case 4 ; flip x-axis
-								adrStart = source + bmpW
-								adrAdd = -1
-								adrSub =  bmpW * 2 + 2
-							Case 5 ; flip y-axis
-								adrStart = source + bmpH * (bmpW + 1)
-								adrAdd = 1
-								adrSub = -(bmpW + 1) * 2
-							Default ; normal mode
-								adrStart = source
-								adrAdd = 1
-								adrSub = 0
-						EndSelect
-						
-						If colF
-							
-							adrR = adrStart
-							by = bmpY
-							For y = 0 To bmpH
-								bx = bmpX
-								adrV = bx + by * scrW
-								For x = 0 To bmpW
-									If bx >= 0 And bx < scrW And by >= 0 And by < scrH
-										color = *CPU\RAM(adrR)
-										If color
-											If collision = 0
-												collision = *CPU\VRAM(adrV)
-												If collision & $FF00 ; collision found! 
-													collision >> 8
-													SETVAL(System\ADR_Collision, collision)
-												EndIf
-											EndIf
-											color | colID ; add collision ID to the color
-											*CPU\VRAM(adrV) = colF
-										Else
-											*CPU\VRAM(adrV) = colB
-										EndIf
-									EndIf
-									adrR + adrAdd
-									adrV + 1
-									bx + 1
-								Next
-								adrR + adrSub
-								by + 1
-							Next
-							
-						Else		
-							
-							adrR = adrStart
-							by = bmpY
-							For y = 0 To bmpH
-								bx = bmpX
-								adrV = bx + by * scrW
-								For x = 0 To bmpW
-									If bx >= 0 And bx < scrW And by >= 0 And by < scrH
-										color = *CPU\RAM(adrR)
-										If color
-											If collision = 0
-												collision = *CPU\VRAM(adrV) >> 8
-												If collision
-													SETVAL(System\ADR_Collision, collision)
-												EndIf
-											EndIf
-											color | colID ; add collision ID to the color
-											*CPU\VRAM(adrV) = color
-										ElseIf colB
-											*CPU\VRAM(adrV) = colB
-										EndIf
-									EndIf
-									adrR + adrAdd
-									adrV + 1
-									bx + 1
-								Next
-								adrR + adrSub
-								by + 1
-							Next
-							
-						EndIf
-					EndIf
-				Case #OP_PAL ; set palette mode on/off
-					GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_Palette))
-				Case #OP_CLF ; set front color
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_COL_Front, valI1)
-				Case #OP_CLB ; set back color
-					GETVAL_READ(System\nextIP, valI1)
-					SETVAL(System\ADR_COL_Back, valI1)
-				Case #OP_PLT
-					Define x, y, adr
-					
-					GETVAL_READ(System\nextIP, x)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, y)
-					adr = x + y * System\SCR_Width
-					If adr >= 0 And adr < System\VRAM_Size
-						GETVAL(System\ADR_COL_Front, *CPU\VRAM(adr))
-					EndIf
-				Case #OP_DRW
-					Define x, y, scrW, scrH, adrV, c.a, palette
-					
-					If System\SCR_Active
-						GETVAL(System\ADR_Palette, palette)
-						If StartDrawing(ScreenOutput())
-							scrW = System\SCR_Width - 1
-							scrH = System\SCR_Height - 1
-							adrV = 0
-							
-							If palette = 0
-								For y = 0 To scrH
-									For x = 0 To scrW
-										Plot(x, y, *CPU\VRAM(adrV))
-										adrV + 1
-									Next
-								Next
-							Else
-								For y = 0 To scrH
-									For x = 0 To scrW
-										c = *CPU\VRAM(adrV) 
-										Plot(x, y, *CPU\RAM(System\ADR_Color + c))
-										adrV + 1
-									Next
-								Next
-							EndIf
-							StopDrawing()
-							
-							FlipBuffers()
-						EndIf
-					EndIf
-				Case #OP_DLY
-					Define curIP, nextIP
-					
-					If System\wait = 0
-						curIP = System\nextIP
-						GETVAL_READ(System\nextIP, valI1)
-						System\wait = System\time + valI1
-						nextIP = System\nextIP
-						System\nextIP = curIP
-					ElseIf System\time >= System\wait
-						System\wait = 0
-						System\nextIP = nextIP
-					Else
-						Delay(5)
-					EndIf
-				Case #OP_INP
-					If System\SCR_Active
-						ExamineMouse()
-						ExamineKeyboard()
-						
-						*CPU\FLAGS = KeyboardPushed(#PB_Key_All)
-						
-						SETVAL(System\ADR_MOUSE_X, DesktopUnscaledX(WindowMouseX(#w_Screen)) * System\SCR_PixelSize)
-						SETVAL(System\ADR_MOUSE_Y, DesktopUnscaledY(WindowMouseY(#w_Screen)) * System\SCR_PixelSize)
-						Define mouseB = 0
-						
-						If MouseButton(#PB_MouseButton_Left)
-							mouseB | #Button_Left
-						EndIf
-						If MouseButton(#PB_MouseButton_Right)
-							mouseB | #Button_Right
-						EndIf
-						
-						SETVAL(System\ADR_MOUSE_B, mouseB)
-					Else
-						*CPU\FLAGS = 0
-					EndIf
-				Case #OP_KEY
-					GETVAL_READ(System\nextIP, valI1)
-					*CPU\FLAGS = Bool(KeyboardPushed(valI1))
-				Case #OP_SNP
-					GETVAL_READ(System\nextIP, valI1)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valI2)
-					
-					If SoundSystemOK
-						If valI1
-							If IsSound(valI1)
-								If valI2 = 0
-									StopSound(valI1)
-								ElseIf valI2 = 2
-									PauseSound(valI1)
-								Else
-									PlaySound(valI1)
-								EndIf
-							EndIf
-						Else
-							If valI2 = 2
-								PauseSound(#PB_All)
-							Else
-								StopSound(#PB_All)
-							EndIf
-						EndIf
-					EndIf
-				Case #OP_SNS
-					GETVAL_READ(System\nextIP, valI1)
-					
-					If SoundSystemOK
-						*CPU\FLAGS = -1
-						If IsSound(valI1)
-							Select SoundStatus(valI1)
-								Case #PB_Sound_Stopped : *CPU\FLAGS = 0
-								Case #PB_Sound_Playing : *CPU\FLAGS = 1
-								Case #PB_Sound_Paused : *CPU\FLAGS = 2
-							EndSelect
-						EndIf
-					EndIf
-				Case #OP_DBG
-					Define *token.TOKEN
-					
-					GETVAL_READ(System\nextIP, *token)
-					GETNEXTADRMODE()
-					GETVAL_READ(System\nextIP, valF1)
-					
-					valS = GetGadgetItemText(#g_Debug, CountGadgetItems(#g_Debug) - 1)
-					If *token
-						valI1 = ValF1
-						valS + Trim(TokenText(*token), #DOUBLEQUOTE$)
-						valS = ReplaceString(valS, "%i", Str(valI1))
-						valS = ReplaceString(valS, "%c", Str(valI1 % 255))
-						valS = ReplaceString(valS, "%f", StrD(valF1))
-					Else
-						valS = StrD(valF1)
-					EndIf
-					
-					RemoveGadgetItem(#g_Debug, CountGadgetItems(#g_Debug) - 1)
-					AddGadgetItem(#g_Debug, -1, ReplaceString(valS, "\n", #NL$))
-					HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
-				Case #OP_HLT
-					System_Error(System_LineNrByIP(*CPU\IP) + 1, "HALT - PROGRAM PAUSED!", #True)
-					System_RunState((RunState & ~(#STATE_PAUSE | #STATE_STEPOUT)) | (#STATE_STEP | #STATE_RUN))
-				Case #OP_END
-					System\state | #STATE_END
-					System_CloseScreen(#True)
-					System_RunState(0)
-				Default
-					GETVAL(*CPU\IP, valF1)
-					System_Error(System_LineNrByIP(*CPU\IP), "Illegal opcode: " + FSTR(valF1))
-					System\state | #STATE_END
-					System_RunState(0)
-			EndSelect
+			CallFunctionFast(opcode(opcode)\proc)
 			
 			If System\wait <= 0
 				*CPU\IP = System\nextIP
@@ -4313,110 +4445,109 @@ Until System\state & #STATE_QUIT
 
 DataSection
 	ico_file_new:
-	IncludeBinary "_ico\file_new.png"
+	IncludeBinary "_ico/file_new.png"
 	ico_file_open:
-	IncludeBinary "_ico\file_open.png"
+	IncludeBinary "_ico/file_open.png"
 	ico_file_save:
-	IncludeBinary "_ico\file_save.png"
+	IncludeBinary "_ico/file_save.png"
 	ico_file_close:
-	IncludeBinary "_ico\file_close.png"
+	IncludeBinary "_ico/file_close.png"
 	ico_undo:
-	IncludeBinary "_ico\undo.png"
+	IncludeBinary "_ico/undo.png"
 	ico_redo:
-	IncludeBinary "_ico\redo.png"
+	IncludeBinary "_ico/redo.png"
 	ico_compile_run:
-	IncludeBinary "_ico\compile_run.png"
+	IncludeBinary "_ico/compile_run.png"
 	ico_compile:
-	IncludeBinary "_ico\compile.png"
+	IncludeBinary "_ico/compile.png"
 	ico_run:
-	IncludeBinary "_ico\run.png"
+	IncludeBinary "_ico/run.png"
 	ico_step:
-	IncludeBinary "_ico\step.png"
+	IncludeBinary "_ico/step.png"
 	ico_stepout:
-	IncludeBinary "_ico\stepout.png"
+	IncludeBinary "_ico/stepout.png"
 	ico_monitor:
-	IncludeBinary "_ico\monitor.png"
+	IncludeBinary "_ico/monitor.png"
 	ico_help:
-	IncludeBinary "_ico\help.png"
+	IncludeBinary "_ico/help.png"
 	ico_copy:
-	IncludeBinary "_ico\copy.png"
+	IncludeBinary "_ico/copy.png"
 	
 	Opcodes:
 	;      opcode,  nrParams, size, name
-	Data.i #OP_GET, 1, 2 : Data.s "GET,Get"
-	Data.i #OP_SET, 1, 2 : Data.s "SET,="
-	Data.i #OP_ADD, 1, 2 : Data.s "ADD,+"
-	Data.i #OP_SUB, 1, 2 : Data.s "SUB,-"
-	Data.i #OP_MUL, 1, 2 : Data.s "MUL,*"
-	Data.i #OP_DIV, 1, 2 : Data.s "DIV,/"
-	Data.i #OP_SQR, 0, 1 : Data.s "SQR,Sqr"
-	Data.i #OP_POW, 1, 2 : Data.s "POW,^"
-	Data.i #OP_SHL, 1, 2 : Data.s "SHL,<<"
-	Data.i #OP_SHR, 1, 2 : Data.s "SHR,>>"
-	Data.i #OP_AND, 1, 2 : Data.s "AND,&&"
-	Data.i #OP__OR, 1, 2 : Data.s "OR,||"
-	Data.i #OP_MOD, 1, 2 : Data.s "MOD,%"
-	Data.i #OP_INT, 0, 1 : Data.s "INT,Floor"
-	Data.i #OP_CIL, 0, 1 : Data.s "CIL,Ceil"
-	Data.i #OP_ABS, 0, 1 : Data.s "ABS,Abs"
-	Data.i #OP_NEG, 0, 1 : Data.s "NEG,Neg"
-	Data.i #OP_NTH, 1, 2 : Data.s "NTH,Nth"
-	Data.i #OP_MIN, 1, 2 : Data.s "MIN,Min"
-	Data.i #OP_MAX, 1, 2 : Data.s "MAX,Max"
-	Data.i #OP_SGN, 0, 1 : Data.s "SGN,Sgn"
-	Data.i #OP_RSD, 1, 2 : Data.s "RSD,Seed"
-	Data.i #OP_RND, 0, 1 : Data.s "RND,Rnd"
-	Data.i #OP_IFL, 1, 3 : Data.s "IFL,Is"
-	Data.i #OP_IGR, 1, 3 : Data.s "IGR,>"
-	Data.i #OP_IGE, 1, 3 : Data.s "IGE,>="
-	Data.i #OP_ILO, 1, 3 : Data.s "ILO,<"
-	Data.i #OP_ILE, 1, 3 : Data.s "ILE,<="
-	Data.i #OP_IEQ, 1, 3 : Data.s "IEQ,=="
-	Data.i #OP_INE, 1, 3 : Data.s "INE,<>"
-	Data.i #OP_JMP, 1, 2 : Data.s "JMP,Jmp"
-	Data.i #OP_JMF, 2, 3 : Data.s "JMF,JmpF"
-	Data.i #OP_PSH, 1, 2 : Data.s "PSH,Push"
-	Data.i #OP_POP, 1, 2 : Data.s "POP,Pop"
-	Data.i #OP_PUI, 0, 1 : Data.s "PUI,PushI"
-	Data.i #OP_POI, 0, 1 : Data.s "POI,PopI"
-	Data.i #OP_PUS, 0, 1 : Data.s "PUS,PushS"
-	Data.i #OP_POS, 0, 1 : Data.s "POS,PopS"
-	Data.i #OP_PUV, 0, 1 : Data.s "PUV,PushV"
-	Data.i #OP_POV, 0, 1 : Data.s "POV,PopV"
-	Data.i #OP_PUF, 0, 1 : Data.s "PUF,PushF"
-	Data.i #OP_POF, 0, 1 : Data.s "POF,PopF"
-	Data.i #OP_ADS, 1, 2 : Data.s "ADS,AddSP"
-	Data.i #OP_SCR, 2, 3 : Data.s "SCR,Screen"
-	Data.i #OP_CLS, 0, 1 : Data.s "CLS,Cls"
-	Data.i #OP_DRW, 0, 1 : Data.s "DRW,Draw"
-	Data.i #OP_BMS, 2, 3 : Data.s "BMS,SetSize"
-	Data.i #OP_BXY, 2, 3 : Data.s "BXY,SetXY"
-	Data.i #OP_BMO, 2, 3 : Data.s "BMO,MoveXY"
-	Data.i #OP_BMM, 1, 2 : Data.s "BMM,SetMode"
-	Data.i #OP_BMP, 1, 2 : Data.s "BMP,Bitmap"
-	Data.i #OP_PLT, 2, 3 : Data.s "PLT,Plot"
-	Data.i #OP_PAL, 1, 2 : Data.s "PAL,Palette"
-	Data.i #OP_CLF, 1, 2 : Data.s "CLF,ColorF"
-	Data.i #OP_CLB, 1, 2 : Data.s "CLB,ColorB"
-	Data.i #OP_DLY, 1, 2 : Data.s "DLY,Delay"
-	Data.i #OP_INP, 0, 1 : Data.s "INP,Input"
-	Data.i #OP_KEY, 1, 2 : Data.s "KEY,Key"
-	Data.i #OP_SNP, 2, 3 : Data.s "SNP,Play"
-	Data.i #OP_SNS, 1, 2 : Data.s "SNS,PlayState"
-	Data.i #OP_DBG, 2, 3 : Data.s "DBG,Debug"
-	Data.i #OP_HLT, 0, 1 : Data.s "HLT,Halt"
-	Data.i #OP_KIL, 0, 1 : Data.s "KIL,Kill"
-	Data.i #OP_END, 0, 1 : Data.s "END,End"
-	Data.i 0, 0, 0
+	Data.i #OP_GET, 1, 2, @OP_GET() : Data.s "GET,Get"
+	Data.i #OP_SET, 1, 2, @OP_SET() : Data.s "SET,="
+	Data.i #OP_ADD, 1, 2, @OP_ADD() : Data.s "ADD,+"
+	Data.i #OP_SUB, 1, 2, @OP_SUB() : Data.s "SUB,-"
+	Data.i #OP_MUL, 1, 2, @OP_MUL() : Data.s "MUL,*"
+	Data.i #OP_DIV, 1, 2, @OP_DIV() : Data.s "DIV,/"
+	Data.i #OP_SQR, 0, 1, @OP_SQR() : Data.s "SQR,Sqr"
+	Data.i #OP_POW, 1, 2, @OP_POW() : Data.s "POW,^"
+	Data.i #OP_SHL, 1, 2, @OP_SHL() : Data.s "SHL,<<"
+	Data.i #OP_SHR, 1, 2, @OP_SHR() : Data.s "SHR,>>"
+	Data.i #OP_AND, 1, 2, @OP_AND() : Data.s "AND,&&"
+	Data.i #OP__OR, 1, 2, @OP__OR() : Data.s "OR,||"
+	Data.i #OP_MOD, 1, 2, @OP_MOD() : Data.s "MOD,%"
+	Data.i #OP_INT, 0, 1, @OP_INT() : Data.s "INT,Floor"
+	Data.i #OP_CIL, 0, 1, @OP_CIL() : Data.s "CIL,Ceil"
+	Data.i #OP_ABS, 0, 1, @OP_ABS() : Data.s "ABS,Abs"
+	Data.i #OP_NEG, 0, 1, @OP_NEG() : Data.s "NEG,Neg"
+	Data.i #OP_NTH, 1, 2, @OP_NTH() : Data.s "NTH,Nth"
+	Data.i #OP_MIN, 1, 2, @OP_MIN() : Data.s "MIN,Min"
+	Data.i #OP_MAX, 1, 2, @OP_MAX() : Data.s "MAX,Max"
+	Data.i #OP_SGN, 0, 1, @OP_SGN() : Data.s "SGN,Sgn"
+	Data.i #OP_RSD, 1, 2, @OP_RSD() : Data.s "RSD,Seed"
+	Data.i #OP_SIN, 0, 1, @OP_SIN() : Data.s "SIN,Sin"
+	Data.i #OP_COS, 0, 1, @OP_COS() : Data.s "COS,Cos"
+	Data.i #OP_RND, 0, 1, @OP_RND() : Data.s "RND,Rnd"
+	Data.i #OP_IFL, 1, 3, @OP_IFL() : Data.s "IFL,Is"
+	Data.i #OP_IGR, 1, 3, @OP_IGR() : Data.s "IGR,>"
+	Data.i #OP_IGE, 1, 3, @OP_IGE() : Data.s "IGE,>="
+	Data.i #OP_ILO, 1, 3, @OP_ILO() : Data.s "ILO,<"
+	Data.i #OP_ILE, 1, 3, @OP_ILE() : Data.s "ILE,<="
+	Data.i #OP_IEQ, 1, 3, @OP_IEQ() : Data.s "IEQ,=="
+	Data.i #OP_INE, 1, 3, @OP_INE() : Data.s "INE,<>"
+	Data.i #OP_JMP, 1, 2, @OP_JMP() : Data.s "JMP,Jmp"
+	Data.i #OP_JMF, 2, 3, @OP_JMF() : Data.s "JMF,JmpF"
+	Data.i #OP_PSH, 1, 2, @OP_PSH() : Data.s "PSH,Push"
+	Data.i #OP_POP, 1, 2, @OP_POP() : Data.s "POP,Pop"
+	Data.i #OP_PUI, 0, 1, @OP_PUI() : Data.s "PUI,PushI"
+	Data.i #OP_POI, 0, 1, @OP_POI() : Data.s "POI,PopI"
+	Data.i #OP_PUS, 0, 1, @OP_PUS() : Data.s "PUS,PushS"
+	Data.i #OP_POS, 0, 1, @OP_POS() : Data.s "POS,PopS"
+	Data.i #OP_PUV, 0, 1, @OP_PUV() : Data.s "PUV,PushV"
+	Data.i #OP_POV, 0, 1, @OP_POV() : Data.s "POV,PopV"
+	Data.i #OP_PUF, 0, 1, @OP_PUF() : Data.s "PUF,PushF"
+	Data.i #OP_POF, 0, 1, @OP_POF() : Data.s "POF,PopF"
+	Data.i #OP_ADS, 1, 2, @OP_ADS() : Data.s "ADS,AddSP"
+	Data.i #OP_SCR, 2, 3, @OP_SCR() : Data.s "SCR,Screen"
+	Data.i #OP_CLS, 0, 1, @OP_CLS() : Data.s "CLS,Cls"
+	Data.i #OP_DRW, 0, 1, @OP_DRW() : Data.s "DRW,Draw"
+	Data.i #OP_BMS, 2, 3, @OP_BMS() : Data.s "BMS,SetSize"
+	Data.i #OP_BXY, 2, 3, @OP_BXY() : Data.s "BXY,SetXY"
+	Data.i #OP_BMO, 2, 3, @OP_BMO() : Data.s "BMO,MoveXY"
+	Data.i #OP_BMM, 1, 2, @OP_BMM() : Data.s "BMM,SetMode"
+	Data.i #OP_BMP, 1, 2, @OP_BMP() : Data.s "BMP,Bitmap"
+	Data.i #OP_PLT, 2, 3, @OP_PLT() : Data.s "PLT,Plot"
+	Data.i #OP_PAL, 1, 2, @OP_PAL() : Data.s "PAL,Palette"
+	Data.i #OP_CLF, 1, 2, @OP_CLF() : Data.s "CLF,ColorF"
+	Data.i #OP_CLB, 1, 2, @OP_CLB() : Data.s "CLB,ColorB"
+	Data.i #OP_DLY, 1, 2, @OP_DLY() : Data.s "DLY,Delay"
+	Data.i #OP_INP, 0, 1, @OP_INP() : Data.s "INP,Input"
+	Data.i #OP_KEY, 1, 2, @OP_KEY() : Data.s "KEY,Key"
+	Data.i #OP_SNP, 2, 3, @OP_SNP() : Data.s "SNP,Play"
+	Data.i #OP_SNS, 1, 2, @OP_SNS() : Data.s "SNS,PlayState"
+	Data.i #OP_DBG, 2, 3, @OP_DBG() : Data.s "DBG,Debug"
+	Data.i #OP_HLT, 0, 1, @OP_HLT() : Data.s "HLT,Halt"
+	Data.i #OP_KIL, 0, 1, @OP_KIL() : Data.s "KIL,Kill"
+	Data.i #OP_END, 0, 1, @OP_END() : Data.s "END,End"
+	Data.i 0, 0, 0, 0
 EndDataSection
-; IDE Options = PureBasic 6.10 LTS (Windows - x64)
-; Folding = ---------------
-; Markers = 3264
-; Optimizer
+; IDE Options = PureBasic 6.04 beta 2 LTS (Windows - x64)
+; CursorPosition = 1100
+; FirstLine = 1097
+; Folding = ---------------------------
 ; EnableXP
-; DPIAware
-; DllProtection
 ; UseIcon = _ico\icon.ico
-; Executable = ShoCo.exe
+; Executable = _sho.co_
 ; DisableDebugger
-; Compiler = PureBasic 6.10 LTS (Windows - x64)
