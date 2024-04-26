@@ -860,7 +860,7 @@ Procedure IDE_Init()
 	ButtonGadget(#g_SearchOptions, 155, 0, 25, 25, "...")
 	CloseGadgetList()
 	
-	PanelGadget(#g_SectionPanel, 0, 0, 0, 0)
+	PanelGadget(#g_SectionPanel, 0, 30, 0, 0)
 	AddGadgetItem(#g_SectionPanel, 0, "Subs")
 	ListViewGadget(#g_SubList, 0, 0, 0, 0)
 	AddGadgetItem(#g_SectionPanel, 1, "Fields")
@@ -4277,6 +4277,7 @@ Procedure Event_Gadget()
 			Select EventGadget()
 				Case #g_FilePanel
 					If EventData() = 0
+						; this his a hack to recognize the active tab under Linux
 						PostEvent(#PB_Event_Gadget, EventWindow(), EventGadget(), #PB_EventType_Change, 1)
 					Else
 						System\state | #STATE_SILENT
@@ -4361,9 +4362,9 @@ Procedure Event_Window()
 			Select EventWindow()
 				Case #w_Main
 					CompilerIf #PB_Compiler_OS = #PB_OS_Windows
-						ResizeGadget_(#g_SplitterEditorV, 5, ToolBarHeightMain, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) + MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+						ResizeGadget_(#g_SplitterEditorV, 5, ToolBarHeightMain, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
 					CompilerElse
-						ResizeGadget_(#g_SplitterEditorV, 5, 0, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) + MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+						ResizeGadget_(#g_SplitterEditorV, 5, 0, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
 					CompilerEndIf
 					ResizeGadget_(#g_SectionPanel, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SubContainer), GadgetHeight(#g_SubContainer) - 30)
 					w = GetGadgetState(#g_SplitterEditorV)
@@ -4543,9 +4544,9 @@ DataSection
 	Data.i #OP_END, 0, 1, @OP_END() : Data.s "END,End"
 	Data.i 0, 0, 0, 0
 EndDataSection
-; IDE Options = PureBasic 6.04 beta 2 LTS (Windows - x64)
-; CursorPosition = 1100
-; FirstLine = 1097
+; IDE Options = PureBasic 6.10 LTS (Linux - x64)
+; CursorPosition = 4373
+; FirstLine = 4361
 ; Folding = ---------------------------
 ; EnableXP
 ; UseIcon = _ico\icon.ico
