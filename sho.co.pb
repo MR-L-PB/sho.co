@@ -18,9 +18,8 @@ Global FontName.s = "Consolas"
 Global Font = LoadFont(#PB_Any, FontName, FontHeight)
 Global FontBold = LoadFont(#PB_Any, FontName, FontHeight, #PB_Font_Bold)
 
-
 #NbDecimals = 4
-#PROTECT_RAM = 0;1
+#PROTECT_RAM = 1
 
 CompilerIf #PB_Compiler_Debugger
 	;	MessageRequester(#AppTitle$, "For more speed, deactivate the debugger.", #PB_MessageRequester_Info)
@@ -64,7 +63,7 @@ Enumeration ENUM_MENU 1
 	#m_NextFile
 EndEnumeration
 
-Enumeration
+Enumeration ENUM_TOOLBAR 1
 	#t_Main
 	#t_Monitor
 EndEnumeration
@@ -310,7 +309,7 @@ Structure OPCODE
 	proc.i
 EndStructure
 
-Structure ExitList
+Structure EXITLIST
 	lineNr.i
 	exit_adr.i
 	List adrList.i()
@@ -406,7 +405,7 @@ Structure SYSTEM
 	STACK_Size.i						; size of STACK
 	VRAM_Size.i							; size of Video-RAM
 	
-	ADR_Palette.i						; 0 = no palette (rgb values), 1 = use palette
+	ADR_PaletteMode.i					; 0 = no palette (rgb values), 1 = use palette
 	ADR_Color.i							; address of rgb values
 	ADR_COL_Front.i						; current front color
 	ADR_COL_Back.i						; current back color
@@ -478,36 +477,36 @@ Structure PARSER
 	List dataSect.DATASECT()
 	List reference.DATASECT()
 	
-	List brakeList.ExitList()
-	List bracketList.ExitList()
+	List brakeList.EXITLIST()
+	List bracketList.EXITLIST()
 EndStructure
 
 Structure FILE
 	editor.i
 	path.s
-	isNew.i
+	isNew.a
 EndStructure
 
 Global RamSize, StackSize
 Global VarAddress.i, VarAddressMode.a, VarIndex.i
-Global valF1.d, valF2.d, valI1, valI2, valL.l, valA.a, valS.s, valAdr, arrIndex
+Global valF1.d, valF2.d, valI1, valI2, valL.l, valA.a, valS.s, valAdr
 Global System.SYSTEM
 Global *CPU.CPU
-Global *CurrentFile.File
+Global *CurrentFile.FILE
 Global Parser.PARSER
 Global Dim Opcode.OPCODE(255)
 Global NewList File.FILE()
 Global NewMap *Opcode.OPCODE()
 Global NewMap KeyWord.KEYWORD()
 Global NewMap Constant.CONSTANT()
-Global MonitorVisible, Window_X = 100, Window_Y = 100
+Global MonitorVisible
 Global RunState.i
 Global ToolBarHeightMain.l, ToolBarHeightMonitor.l
 
 Declare File_Add(path.s = "", newFile = #False)
 Declare File_Open(path.s, newFile = #False, activate = #False)
 Declare File_Close(*file.FILE, quit = #False, saveChanges = #True)
-Declare File_Activate(*file.File, carretPos = -1, parse = #False)
+Declare File_Activate(*file.FILE, carretPos = -1, parse = #False)
 Declare File_UpdateIni()
 Declare System_Init(RamSize, StackSize)
 Declare System_RunState(state, updateGadget = #True)
@@ -597,11 +596,10 @@ Macro GETVAL_WRITE(ip_, w_)
 	If VarAddressMode & #ADR_POINTER
 		GETVAL(ip_, VarAddress)
 		GETVAL(VarAddress, w_)
-		w_ + VarIndex
 	Else
 		GETVAL(ip_, w_)
-		w_ + VarIndex
 	EndIf
+	w_ + VarIndex
 	System\nextIP + 1
 EndMacro
 
@@ -609,8 +607,7 @@ Macro GETVAL_READ(ip_, r_)
 	VarAddressMode = System\adrMode & $F
 	GETINDEX()
 	If VarAddressMode & #ADR_INDIRECT
-		GETVAL(ip_, VarAddress)
-		
+		GETVAL(ip_, VarAddress)		
 		If VarAddressMode & #ADR_POINTER
 			GETVAL(VarAddress, VarAddress)
 		EndIf
@@ -641,15 +638,17 @@ Macro POP(v_)
 EndMacro
 
 Macro MATH_I(op_)
-	GETVAL(*CPU\V, valI1)
-	GETVAL_READ(System\nextIP, valI2)
-	valI1 op_ valI2
+ 	GETVAL(*CPU\V, valI1)
+ 	GETVAL_READ(System\nextIP, valI2)
+ 	valI1 op_ valI2
 	SETVAL(*CPU\V, valI1)
 EndMacro
 
 Macro MATH_F(op_)
-	GETVAL_READ(System\nextIP, valF1)
-	SETVAL(*CPU\V, *CPU\RAM(*CPU\V) op_ valF1)
+	GETVAL(*CPU\V, valF1)
+	GETVAL_READ(System\nextIP, valF2)
+	valF1 op_ valF2
+	SETVAL(*CPU\V, valF1)
 EndMacro
 
 Macro COMPARE(op_, flagTrue_, flagFalse_)
@@ -978,9 +977,6 @@ Procedure IDE_Init()
 		ToolBarHeightMonitor = 0
 	CompilerEndIf
 	
-	; SetWindowState(#w_Main, #PB_Window_Maximize)
-	; WindowBounds(#w_Screen, #PB_Ignore, #PB_Ignore, #PB_Ignore, WindowHeight(#w_Main) - ToolBarHeight(#t_Main) - StatusBarHeight(0) - MenuHeight())
-	
 	OpenWindow(#w_Debug, 0, 0, 600, 400, #AppTitle$ + " - Debug output", #PB_Window_Tool | #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
 	EditorGadget(#g_Debug, 0, 0, 600, 400, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
 	StickyWindow(#w_Debug, 1)
@@ -1045,11 +1041,11 @@ Procedure File_Add(path.s = "", newFile = #False)
 	ProcedureReturn *file
 EndProcedure
 
-Procedure File_Activate(*file.File, carretPos = -1, parse = #False)
+Procedure File_Activate(*file.FILE, carretPos = -1, parse = #False)
 	Protected index
 	
 	If *file
-		For index = 0  To CountGadgetItems(#g_FilePanel) - 1
+		For index = 0 To CountGadgetItems(#g_FilePanel) - 1
 			If GetGadgetItemData(#g_FilePanel, index) = *file
 				SetGadgetState(#g_FilePanel, index)
 				SetActiveGadget(*file\editor)
@@ -1352,7 +1348,7 @@ Procedure System_Init(ramSize, stackSize)
 	Dim System\CPU\RAM(System\RAM_Size)
 	
 	*CPU\IP = RamSize
-	SYSTEM_INITRAM(ADR_Palette)
+	SYSTEM_INITRAM(ADR_PaletteMode)
 	SYSTEM_INITRAM(ADR_Color, 255)
 	SYSTEM_INITRAM(ADR_COL_Front)
 	SYSTEM_INITRAM(ADR_COL_Back)
@@ -1372,7 +1368,7 @@ Procedure System_Init(ramSize, stackSize)
 	SYSTEM_INITRAM(ADR_VarStart, 1)
 	SYSTEM_INITRAM(ADR_Var, 0, *CPU\IP, #SYM_FLOAT)
 	
-	SETVAL(System\ADR_Palette, 1)
+	SETVAL(System\ADR_PaletteMode, 1)
 	SETVAL(System\ADR_BMP_W, 8)
 	SETVAL(System\ADR_BMP_H, 8)
 	
@@ -1393,7 +1389,7 @@ Procedure System_Init(ramSize, stackSize)
 	SETVAL(System\ADR_Color + 14, RGB(255, 250, 200))
 	SETVAL(System\ADR_Color + 15, RGB(128, 128, 128))
 	
-	Constant_Add(#SYM_ADDRESS, "#PALETTE", @System\ADR_Palette)
+	Constant_Add(#SYM_ADDRESS, "#PALETTE", @System\ADR_PaletteMode)
 	Constant_Add(#SYM_ADDRESS, "#FRONTCOLOR", @System\ADR_COL_Front)
 	Constant_Add(#SYM_ADDRESS, "#BACKCOLOR", @System\ADR_COL_Back)
 	Constant_Add(#SYM_ADDRESS, "#BMP_X", @System\ADR_BMP_X)
@@ -1596,7 +1592,8 @@ Procedure System_Collect_Variables(*sub.SUB, List varList.VARLIST())
 				Default: varList()\type = "?"
 			EndSelect
 			varList()\address = MEMSTR(*sub\var()\adr)
-			varList()\value = FSTR(*CPU\RAM(*sub\var()\adr))
+			GETVAL(*sub\var()\adr, valF1)
+			varList()\value = FSTR(valF1)
 		Next
 		
 		ForEach *sub\sub()
@@ -1704,7 +1701,8 @@ Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
 				SetGadgetItemText(#g_Variables, lineNr, varList()\name, 1)
 				SetGadgetItemText(#g_Variables, lineNr, varList()\type, 2)
 				SetGadgetItemText(#g_Variables, lineNr, varList()\address, 3)
-				SetGadgetItemText(#g_Variables, lineNr, FSTR(*CPU\RAM(\adr)), 4)
+				GETVAL(\adr, valF1)
+				SetGadgetItemText(#g_Variables, lineNr, FSTR(valF1), 4)
 				
 				If varList()\var\isLocal
 					SetGadgetItemColor(#g_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 245, 230), 1)
@@ -1777,7 +1775,7 @@ Procedure System_Update_Monitor(ip, direction = 0)
 	index = 0
 	Repeat
 		prevIP = *CPU\IP
-		adr = *CPU\RAM(*CPU\IP)
+		GETVAL(*CPU\IP, adr)
 		*sym = @System\symTable(*CPU\IP)
 		
 		isData = #False
@@ -1820,7 +1818,7 @@ Procedure System_Update_Monitor(ip, direction = 0)
 		
 		For paramNr = 0 To *opcode\nParams - 1
 			VarIndex = ""
-			adr = *CPU\RAM(*CPU\IP)
+			GETVAL(*CPU\IP, adr)
 			If System\adrMode & #ADR_INDX_DI
 				VarIndex = Str(adr)
 				*CPU\IP + 1
@@ -1848,7 +1846,8 @@ Procedure System_Update_Monitor(ip, direction = 0)
 				ElseIf *sym\token
 					code + TokenText(*sym\token)
 				Else
-					code + FSTR(*CPU\RAM(*CPU\IP))
+					GETVAL(*CPU\IP, valF1)
+					code + FSTR(valF1)
 				EndIf
 			Else
 				Debug "symboltable error"
@@ -1868,14 +1867,16 @@ Procedure System_Update_Monitor(ip, direction = 0)
 		
 		Select op
 			Case #OP_IFL, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE
-				SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(*CPU\IP)), 3)
-				code + FSTR(*CPU\RAM(*CPU\IP))
+				GETVAL(*CPU\IP, valF1)
+				SetGadgetItemText(#g_Monitor, index, FSTR(valF1), 3)
+				code + FSTR(valF1)
 				*CPU\IP + 1
 		EndSelect
 		
 		SetGadgetItemText(#g_Monitor, index, MEMSTR(prevIP), 0)
 		For paramNr = 0 To *CPU\IP - prevIP - 1
-			SetGadgetItemText(#g_Monitor, index, FSTR(*CPU\RAM(prevIP + paramNr)), 1 + paramNr)
+			GETVAL(prevIP + paramNr, valF1)
+			SetGadgetItemText(#g_Monitor, index, FSTR(valF1), 1 + paramNr)
 			If prevIP + paramNr = curIP
 				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 1 + paramNr)
 			EndIf
@@ -1995,7 +1996,8 @@ Procedure System_Help()
 		HideWindow(#w_Help, 0)
 	Else
 		If OpenWindow(#w_Help, 0, 0, 800, 600, #AppTitle$ + " - Help", #PB_Window_TitleBar | #PB_Window_SystemMenu | #PB_Window_SizeGadget)
-			WebGadget(#g_Help, 5, 5, 790, 590, GetCurrentDirectory() + "_help\help.html")
+			MessageRequester("",GetPathPart(ProgramFilename()) + "_help/help.html")
+			WebGadget(#g_Help, 5, 5, 790, 590, GetPathPart(ProgramFilename()) + "_help/help.html")
 			SetGadgetAttribute(#g_Help, #PB_Web_NavigationCallback, @Help_Callback())
 			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopupMenu, 1)
 			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopups, 1)
@@ -2432,7 +2434,6 @@ Procedure.s Parser_TokenText(*token.TOKEN)
 EndProcedure
 
 Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLocal = #False)
-	Protected value, address
 	Protected text.s, uText.s, key.s, adrMode
 	
 	If *token = #Null
@@ -2451,17 +2452,12 @@ Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLoca
 	
 	text = LTrim(text, "$")    ; Subroutine
 	text = LTrim(text, ":")	   ; Label
-	text = LTrim(text, "@")	   ; Pointer
-	text = LTrim(text, "!")	   ; Read Value
+	text = LTrim(text, "@")	   ; Address
+	text = LTrim(text, "!")	   ; Pointer
 	text = LTrim(text, "~")	   ; Array
 	text = LTrim(text, "#")	   ; Constant
 	uText = UCase(text)
 	adrMode = Asc(*token\text)
-	
-	;   	Debug "SUB:" + RSet(*sub\name, 8) + "    token: " + RSet(TokenText(*token), 8) + " type: " + RSet(GetTokenName(*token\type), 12) + "   paramNr Nr.: " + Str(paramNr)
-	
-	;If FindMapElement(Parser\sub(), key)
-	
 	
 	If *token\type = #T_RGB
 		
@@ -2672,9 +2668,7 @@ Procedure Parse_NextToken(type = #T_UNKNOWN, throwError = #False)
 	Protected *token.TOKEN
 	Protected index = Parser\tokenIndex
 	Protected prevLineNr = Parser\codeLineCount
-	Protected lastIndex
-	
-	lastIndex = Parser\tokenCount
+	Protected lastIndex = Parser\tokenCount
 	
 	Parser\curToken = #Null
 	
@@ -2885,6 +2879,9 @@ Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray 
 			If Parse_Token(*sub, Parser\curToken, paramNr, 0, isLocal)
 				Parse_SetAddressMode(paramNr, #ADR_INDX_IN)
 			EndIf
+		ElseIf Parse_NextToken(#T_CONSTANT) And FindMapElement(Constant(), UCase(Parser\curToken\text))
+			Parse_SetAddressMode(paramNr, #ADR_INDX_DI)
+			Parse_WriteI(Constant()\value, #SYM_INT, Parser\curToken)
 		Else
 			System_Error(Parser\codeLineCount, "wrong index type")
 			ProcedureReturn #False
@@ -3698,7 +3695,7 @@ Procedure OP_COS()
 EndProcedure
 Procedure OP_IFL()
 	GETVAL_READ(System\nextIP, valI1)
-	If *CPU\FLAGS = valI1
+	If *CPU\FLAGS & valI1
 		System\nextIP + 1
 	Else
 		GETVAL(System\nextIP, System\nextIP)
@@ -3907,6 +3904,7 @@ Procedure OP_BMP() ; draw bitmap
 				adrV = bx + by * scrW
 				For x = 0 To bmpW
 					If bx >= 0 And bx < scrW And by >= 0 And by < scrH
+						;GETVAL(adrR, color)
 						color = *CPU\RAM(adrR)
 						If color
 							If collision = 0
@@ -3939,6 +3937,7 @@ Procedure OP_BMP() ; draw bitmap
 				adrV = bx + by * scrW
 				For x = 0 To bmpW
 					If bx >= 0 And bx < scrW And by >= 0 And by < scrH
+						;GETVAL(adrR, color)
 						color = *CPU\RAM(adrR)
 						If color
 							If collision = 0
@@ -3965,7 +3964,8 @@ Procedure OP_BMP() ; draw bitmap
 	EndIf
 EndProcedure
 Procedure OP_PAL() ; set palette mode on/off
-	GETVAL_READ(System\nextIP, *CPU\RAM(System\ADR_Palette))
+	GETVAL_READ(System\nextIP, valI1)
+	SETVAL(System\ADR_PaletteMode, valI1)
 EndProcedure
 Procedure OP_CLF() ; set front color
 	GETVAL_READ(System\nextIP, valI1)
@@ -3987,16 +3987,16 @@ Procedure OP_PLT()
 	EndIf
 EndProcedure
 Procedure OP_DRW()
-	Static x, y, scrW, scrH, adrV, c.a, palette
+	Static x, y, scrW, scrH, adrV, c.a, paletteMode
 	
 	If System\SCR_Active
-		GETVAL(System\ADR_Palette, palette)
+		GETVAL(System\ADR_PaletteMode, paletteMode)
 		If StartDrawing(ScreenOutput())
 			scrW = System\SCR_Width - 1
 			scrH = System\SCR_Height - 1
 			adrV = 0
 			
-			If palette = 0
+			If paletteMode = 0
 				For y = 0 To scrH
 					For x = 0 To scrW
 						Plot(x, y, *CPU\VRAM(adrV))
@@ -4039,20 +4039,34 @@ Procedure OP_INP()
 		ExamineMouse()
 		ExamineKeyboard()
 		
-		*CPU\FLAGS = KeyboardPushed(#PB_Key_All)
+		If KeyboardPushed(#PB_Key_All)
+			*CPU\FLAGS = 1
+		Else
+			*CPU\FLAGS = 0
+		EndIf
 		
-		;  		SETVAL(System\ADR_MOUSE_X, DesktopUnscaledX(WindowMouseX(#w_Screen)) * System\SCR_PixelSize)
-		;  		SETVAL(System\ADR_MOUSE_Y, DesktopUnscaledY(WindowMouseY(#w_Screen)) * System\SCR_PixelSize)
-		SETVAL(System\ADR_MOUSE_X, WindowMouseX(#w_Screen) * (System\SCR_Width / WindowWidth(#w_Screen)))
-		SETVAL(System\ADR_MOUSE_Y, WindowMouseY(#w_Screen) * (System\SCR_Height / WindowHeight(#w_Screen)))
+		Static newX, newY, oldX, oldY
+		newX = DesktopUnscaledX(WindowMouseX(#w_Screen)) * 1.0 * (System\SCR_Width / WindowWidth(#w_Screen))
+		newY = DesktopUnscaledY(WindowMouseY(#w_Screen)) * 1.0 * (System\SCR_Height / WindowHeight(#w_Screen))
+		GETVAL(System\ADR_MOUSE_X, oldX)
+		GETVAL(System\ADR_MOUSE_Y, oldY)
+		SETVAL(System\ADR_MOUSE_X, newX)
+		SETVAL(System\ADR_MOUSE_Y, newY)
+		
 		Static mouseB = 0
 		
+		If (oldX <> newX) Or (oldY <> newY)
+			*CPU\FLAGS | 2
+		EndIf
 		If MouseButton(#PB_MouseButton_Left)
 			mouseB | #Button_Left
+ 			*CPU\FLAGS | 4
 		EndIf
 		If MouseButton(#PB_MouseButton_Right)
 			mouseB | #Button_Right
+ 			*CPU\FLAGS | 8
 		EndIf
+		
 		
 		SETVAL(System\ADR_MOUSE_B, mouseB)
 	Else
@@ -4391,6 +4405,8 @@ DisableExplicit
 IDE_Init()
 System_Start(65536, 255)
 
+Define opcode.a
+
 Repeat
 	
 	If (RunState & #STATE_RUN) And (RunState & #STATE_PAUSE) = 0
@@ -4407,8 +4423,8 @@ Repeat
 			
 			System\prevIP = *CPU\IP
 			VarIndex = 0
-			VarAddIP = 0
-			mem = *CPU\RAM(*CPU\IP)
+			;mem = *CPU\RAM(*CPU\IP)
+			GETVAL(*CPU\IP, mem)
 			opcode = mem & $FF
 			System\adrMode = (mem >> 8) & $FF
 			System\nextIP = *CPU\IP + 1
@@ -4543,11 +4559,12 @@ DataSection
 	Data.i #OP_END, 0, 1, @OP_END() : Data.s "END,End"
 	Data.i 0, 0, 0, 0
 EndDataSection
-; IDE Options = PureBasic 6.04 beta 2 LTS (Windows - x64)
-; CursorPosition = 4476
-; FirstLine = 4475
+; IDE Options = PureBasic 6.11 LTS Beta 1 (Windows - x64)
+; CursorPosition = 3574
+; FirstLine = 3571
 ; Folding = ---------------------------
 ; EnableXP
+; DPIAware
 ; UseIcon = _ico\icon.ico
-; Executable = _sho.co_
+; Executable = _sho.co_.exe
 ; DisableDebugger
