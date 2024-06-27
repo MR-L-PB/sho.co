@@ -69,27 +69,28 @@ Enumeration ENUM_TOOLBAR 1
 EndEnumeration
 
 Enumeration ENUM_GADGET 1
-	#g_FilePanel
-	#g_SplitterEditorH
-	#g_SplitterEditorV
-	#g_SplitterMonitor
-	#g_Status
-	#g_Monitor
-	#g_VarSort
-	#g_VarContainer
-	#g_Variables
-	#g_SubContainer
-	#g_SectionPanel
-	#g_SubList
-	#g_FieldList
-	#g_LabelList
-	#g_SearchContainer
-	#g_SearchText
-	#g_SearchPrev
-	#g_SearchNext
-	#g_SearchOptions
-	#g_Debug
-	#g_Help
+	#g_pnl_File
+	#g_spl_EditorH
+	#g_spl_EditorV
+	#g_spl_Monitor
+	#g_lsv_Status
+	#g_lsi_Monitor
+	#g_txt_VarSort
+	#g_cmb_VarSort
+	#g_cnt_Var
+	#g_lsi_Variables
+	#g_cnt_Sub
+	#g_pnl_Section
+	#g_lsv_Sub
+	#g_lsv_Field
+	#g_lsv_Label
+	#g_cnt_Search
+	#g_str_Search
+	#g_btn_SearchPrev
+	#g_btn_SearchNext
+	#g_btn_SearchOptions
+	#g_edi_Debug
+	#g_web_Help
 EndEnumeration
 
 Enumeration ENUM_WINDOW 1
@@ -243,14 +244,14 @@ Enumeration ENUM_OPCODE
 	#OP_SGN
 	#OP_JMP
 	#OP_JMF
-	#OP_IFL
+	#OP_IST
+	#OP_ISF
 	#OP_ILO
 	#OP_IGR
 	#OP_ILE
 	#OP_IGE
 	#OP_IEQ
 	#OP_INE
-	#OP_GSP
 	#OP_ADS
 	#OP_PSH
 	#OP_POP
@@ -281,6 +282,8 @@ Enumeration ENUM_OPCODE
 	#OP_SNS
 	#OP_DLY
 	#OP_DBG
+	#OP_DBGF
+	#OP_DBGS
 	#OP_HLT
 EndEnumeration
 
@@ -424,6 +427,7 @@ Structure SYSTEM
 	ADR_StackStart.i					; start address of stack
 	ADR_VarStart.i						; start address of variables
 	ADR_Var.i							; current variable address
+	ADR_TEMPVAR.i						; address of internal variable    
 	
 	wait.i                              ; delay time for DLY command
 	state.i								; current state
@@ -522,7 +526,7 @@ Declare Tokenize_Start()
 Declare Parse_NextToken(type = #T_UNKNOWN, throwError =   #False)
 Declare Parse_NextType(direction, tokenType = -1, value.s = "")
 Declare Parse_IsNumber(param.s)
-Declare Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
+Declare Parse_Var(*sub.SUB, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
 Declare Parse_Start(*file.FILE, parseFull = #True)
 Declare Parse_First(*sub.SUB, readMode, depth)
 Declare Parse_Main(*sub.SUB, readState, depth)
@@ -530,7 +534,7 @@ Declare Event_Window()
 Declare Event_Gadget()
 Declare Event_Menu()
 
-XIncludeFile("_editor/Scintilla.pb")
+XIncludeFile("_editor" + #PS$ + "Scintilla.pb")
 
 Macro MEMSTR(v_)
 	"[" + RSet(Str(v_), 6, "0") + "]"
@@ -572,6 +576,19 @@ Macro GETVAL(ip_, v_)
 		v_ = *CPU\RAM(ip_)
 	CompilerEndIf
 EndMacro
+
+Procedure.s GETSTR(ip)
+	Protected i, l, result.s = ""
+	GETVAL(ip, l)
+	ip + 1
+	For i = 1 To l
+		GETVAL(ip, valA)
+		result + Chr(valA)
+		ip + 1
+	Next
+	ProcedureReturn result
+EndProcedure
+
 
 Macro GETNEXTADRMODE()
 	System\adrMode >> 4
@@ -651,15 +668,15 @@ Macro MATH_F(op_)
 	SETVAL(*CPU\V, valF1)
 EndMacro
 
-Macro COMPARE(op_, flagTrue_, flagFalse_)
+Macro COMPARE(op_)
 	GETVAL(*CPU\v, valF1)
 	GETVAL_READ(System\nextIP, valF2)
 	If valF1 op_ valF2
 		System\nextIP + 1
-		*CPU\FLAGS = flagTrue_
+		*CPU\FLAGS = #True
 	Else
 		GETVAL(System\nextIP, System\nextIP)
-		*CPU\FLAGS = flagFalse_
+		*CPU\FLAGS = #False
 	EndIf
 EndMacro
 
@@ -851,34 +868,34 @@ Procedure IDE_Init()
 	AddStatusBarField(100)
 	AddStatusBarField(#PB_Ignore)
 	
-	ContainerGadget(#g_SubContainer, 0,0,0,0, #PB_Container_Double)
-	ContainerGadget(#g_SearchContainer, 5, 0, 180, 25, #PB_Container_BorderLess)
-	StringGadget(#g_SearchText, 0, 0, 100, 25, "", #PB_String_BorderLess)
-	ButtonGadget(#g_SearchPrev, 105, 0, 25, 25, "<")
-	ButtonGadget(#g_SearchNext, 130, 0, 25, 25, ">")
-	ButtonGadget(#g_SearchOptions, 155, 0, 25, 25, "...")
+	ContainerGadget(#g_cnt_Sub, 0,0,0,0, #PB_Container_Double)
+	ContainerGadget(#g_cnt_Search, 5, 0, 180, 25, #PB_Container_BorderLess)
+	StringGadget(#g_str_Search, 0, 0, 100, 25, "", #PB_String_BorderLess)
+	ButtonGadget(#g_btn_SearchPrev, 105, 0, 25, 25, "<")
+	ButtonGadget(#g_btn_SearchNext, 130, 0, 25, 25, ">")
+	ButtonGadget(#g_btn_SearchOptions, 155, 0, 25, 25, "...")
 	CloseGadgetList()
 	
-	PanelGadget(#g_SectionPanel, 0, 30, 0, 0)
-	AddGadgetItem(#g_SectionPanel, 0, "Subs")
-	ListViewGadget(#g_SubList, 0, 0, 0, 0)
-	AddGadgetItem(#g_SectionPanel, 1, "Fields")
-	ListViewGadget(#g_FieldList, 0, 0, 0, 0)
-	AddGadgetItem(#g_SectionPanel, 2, "Labels")
-	ListViewGadget(#g_LabelList, 0, 0, 0, 0)
+	PanelGadget(#g_pnl_Section, 0, 30, 0, 0)
+	AddGadgetItem(#g_pnl_Section, 0, "Subs")
+	ListViewGadget(#g_lsv_Sub, 0, 0, 0, 0)
+	AddGadgetItem(#g_pnl_Section, 1, "Fields")
+	ListViewGadget(#g_lsv_Field, 0, 0, 0, 0)
+	AddGadgetItem(#g_pnl_Section, 2, "Labels")
+	ListViewGadget(#g_lsv_Label, 0, 0, 0, 0)
 	CloseGadgetList()
 	CloseGadgetList()
 	
-	PanelGadget(#g_FilePanel, 0, MenuHeight() + 5, 800, 600)
+	PanelGadget(#g_pnl_File, 0, MenuHeight() + 5, 800, 600)
 	CloseGadgetList()
 	
 	*file = File_Add("", #True)
-	ListViewGadget(#g_Status, 0, 0, 800, 300)
-	SplitterGadget(#g_SplitterEditorH, 0, 0, 800, 600, #g_FilePanel, #g_Status)
-	SetGadgetState(#g_SplitterEditorH, 520)
+	ListViewGadget(#g_lsv_Status, 0, 0, 800, 300)
+	SplitterGadget(#g_spl_EditorH, 0, 0, 800, 600, #g_pnl_File, #g_lsv_Status)
+	SetGadgetState(#g_spl_EditorH, 520)
 	
-	SplitterGadget(#g_SplitterEditorV, 0, 0, 800, 600, #g_SplitterEditorH, #g_SubContainer, #PB_Splitter_Vertical)
-	SetGadgetState(#g_SplitterEditorV, 700)
+	SplitterGadget(#g_spl_EditorV, 0, 0, 800, 600, #g_spl_EditorH, #g_cnt_Sub, #PB_Splitter_Vertical)
+	SetGadgetState(#g_spl_EditorV, 700)
 	WindowBounds(#w_Main, 200, 60, #PB_Ignore, #PB_Ignore)
 	HideWindow(#w_Main, 0)
 	
@@ -919,30 +936,31 @@ Procedure IDE_Init()
 	ToolBarImageButton(#m_StepOut, img("stepout")) : ToolBarToolTip(#t_Monitor, #m_StepOut, "Step Out")
 	ToolBarImageButton(#m_CopyMonitor, img("copymonitor")) : ToolBarToolTip(#t_Monitor, #m_CopyMonitor, "Copy")
 	
-	ListIconGadget(#g_Monitor, 0, 0, 0, 0, "Address", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
-	AddGadgetColumn(#g_Monitor, 1, "m1", 50)
-	AddGadgetColumn(#g_Monitor, 2, "m2", 50)
-	AddGadgetColumn(#g_Monitor, 3, "m3", 50)
-	AddGadgetColumn(#g_Monitor, 4, "Code", 1000)
-	ContainerGadget(#g_VarContainer, 0, 0, 0, 0)
-	ComboBoxGadget(#g_VarSort, 0, 0, 0, 0)
+	ListIconGadget(#g_lsi_Monitor, 0, 0, 0, 0, "Address", 80, #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_FullRowSelect | #PB_ListIcon_GridLines | #PB_ListIcon_MultiSelect)
+	AddGadgetColumn(#g_lsi_Monitor, 1, "m1", 60)
+	AddGadgetColumn(#g_lsi_Monitor, 2, "m2", 60)
+	AddGadgetColumn(#g_lsi_Monitor, 3, "m3", 60)
+	AddGadgetColumn(#g_lsi_Monitor, 4, "Code", 1000)
+	ContainerGadget(#g_cnt_Var, 0, 0, 0, 0)
 	
-	AddGadgetItem(#g_VarSort, 0, "Subroutine")
-	AddGadgetItem(#g_VarSort, 1, "Name")
-	AddGadgetItem(#g_VarSort, 2, "Type")
-	AddGadgetItem(#g_VarSort, 3, "Address")
-	AddGadgetItem(#g_VarSort, 4, "Value")
-	SetGadgetState(#g_VarSort, 0)
+	TextGadget(#g_txt_VarSort, 0, 0, 0, 0, "Sort by:")
+	ComboBoxGadget(#g_cmb_VarSort, 0, 0, 0, 0)
+	AddGadgetItem(#g_cmb_VarSort, 0, "Subroutine")
+	AddGadgetItem(#g_cmb_VarSort, 1, "Name")
+	AddGadgetItem(#g_cmb_VarSort, 2, "Type")
+	AddGadgetItem(#g_cmb_VarSort, 3, "Address")
+	AddGadgetItem(#g_cmb_VarSort, 4, "Value")
+	SetGadgetState(#g_cmb_VarSort, 0)
 	
-	ListIconGadget(#g_Variables, 0, 0, 0, 0, "Subroutine", 80, #PB_ListIcon_FullRowSelect | #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_GridLines)
+	ListIconGadget(#g_lsi_Variables, 0, 0, 0, 0, "Subroutine", 80, #PB_ListIcon_FullRowSelect | #PB_ListIcon_AlwaysShowSelection | #PB_ListIcon_GridLines)
 	CloseGadgetList()
-	AddGadgetColumn(#g_Variables, 1, "Name", 80)
-	AddGadgetColumn(#g_Variables, 2, "Type", 50)
-	AddGadgetColumn(#g_Variables, 3, "Address", 100)
-	AddGadgetColumn(#g_Variables, 4, "Value", 500)
+	AddGadgetColumn(#g_lsi_Variables, 1, "Name", 80)
+	AddGadgetColumn(#g_lsi_Variables, 2, "Type", 50)
+	AddGadgetColumn(#g_lsi_Variables, 3, "Address", 100)
+	AddGadgetColumn(#g_lsi_Variables, 4, "Value", 500)
 	
-	SplitterGadget(#g_SplitterMonitor, 0, 0,800, 600, #g_Monitor, #g_VarContainer, #PB_Splitter_Vertical)
-	SetGadgetState(#g_SplitterMonitor, 400)
+	SplitterGadget(#g_spl_Monitor, 0, 0,800, 600, #g_lsi_Monitor, #g_cnt_Var, #PB_Splitter_Vertical)
+	SetGadgetState(#g_spl_Monitor, 400)
 	
 	StickyWindow(#w_Monitor, 1)
 	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_F5, #m_ParseRun)
@@ -950,23 +968,23 @@ Procedure IDE_Init()
 	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_Up, #m_MonitorUp)
 	AddKeyboardShortcut(#w_Monitor, #PB_Shortcut_Down, #m_MonitorDown)
 	
-	SetGadgetFont(#g_Status, FontID(Font))
-	SetGadgetFont(#g_Variables, FontID(Font))
-	SetGadgetFont(#g_Monitor, FontID(Font))
-	SetGadgetFont(#g_SubList, FontID(FontBold))
-	SetGadgetFont(#g_FieldList, FontID(FontBold))
-	SetGadgetFont(#g_LabelList, FontID(FontBold))
-	SetGadgetColor(#g_Status, #PB_Gadget_BackColor, 0)
-	SetGadgetColor(#g_Status, #PB_Gadget_FrontColor, RGB(255,255,255))
-	SetGadgetColor(#g_SubList, #PB_Gadget_BackColor, 0)
-	SetGadgetColor(#g_SubList, #PB_Gadget_FrontColor, RGB(255,255,255))
-	SetGadgetColor(#g_FieldList, #PB_Gadget_BackColor, 0)
-	SetGadgetColor(#g_FieldList, #PB_Gadget_FrontColor, RGB(255,255,255))
-	SetGadgetColor(#g_LabelList, #PB_Gadget_BackColor, 0)
-	SetGadgetColor(#g_LabelList, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetFont(#g_lsv_Status, FontID(Font))
+	SetGadgetFont(#g_lsi_Variables, FontID(Font))
+	SetGadgetFont(#g_lsi_Monitor, FontID(Font))
+	SetGadgetFont(#g_lsv_Sub, FontID(FontBold))
+	SetGadgetFont(#g_lsv_Field, FontID(FontBold))
+	SetGadgetFont(#g_lsv_Label, FontID(FontBold))
+	SetGadgetColor(#g_lsv_Status, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_lsv_Status, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_lsv_Sub, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_lsv_Sub, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_lsv_Field, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_lsv_Field, #PB_Gadget_FrontColor, RGB(255,255,255))
+	SetGadgetColor(#g_lsv_Label, #PB_Gadget_BackColor, 0)
+	SetGadgetColor(#g_lsv_Label, #PB_Gadget_FrontColor, RGB(255,255,255))
 	
-	While CountGadgetItems(#g_Monitor) < 1000
-		AddGadgetItem(#g_Monitor, -1, "")
+	While CountGadgetItems(#g_lsi_Monitor) < 1000
+		AddGadgetItem(#g_lsi_Monitor, -1, "")
 	Wend
 	
 	CompilerIf #PB_Compiler_OS = #PB_OS_Windows
@@ -978,9 +996,9 @@ Procedure IDE_Init()
 	CompilerEndIf
 	
 	OpenWindow(#w_Debug, 0, 0, 600, 400, #AppTitle$ + " - Debug output", #PB_Window_Tool | #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_Invisible)
-	EditorGadget(#g_Debug, 0, 0, 600, 400, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
+	EditorGadget(#g_edi_Debug, 0, 0, 600, 400, #PB_Editor_ReadOnly | #PB_Editor_WordWrap)
 	StickyWindow(#w_Debug, 1)
-	SetGadgetFont(#g_Debug, FontID(Font))
+	SetGadgetFont(#g_edi_Debug, FontID(Font))
 	
 	PostEvent(#PB_Event_SizeWindow, #w_Monitor, 0)	
 	PostEvent(#PB_Event_SizeWindow, #w_Main, 0)	
@@ -994,7 +1012,7 @@ Procedure IDE_Init()
 		EndIf
 	Next
 	
-	AddGadgetItem(#g_Status, -1, "System started") 
+	AddGadgetItem(#g_lsv_Status, -1, "System started") 
 EndProcedure
 
 ;-
@@ -1013,7 +1031,7 @@ EndProcedure
 Procedure File_Add(path.s = "", newFile = #False)
 	Protected *file.FILE
 	Protected index, oldGadgetList
-	path = ReplaceString(path, "\", "/")
+	path = ReplaceString(path, #NPS$, #PS$)
 	
 	*file = File_Find(path)
 	If newFile Or *file = #Null
@@ -1028,11 +1046,11 @@ Procedure File_Add(path.s = "", newFile = #False)
 			EndIf
 			
 			oldGadgetList = UseGadgetList(WindowID(#w_Main))
-			OpenGadgetList(#g_FilePanel)
-			index = GetGadgetState(#g_FilePanel) + 1
-			AddGadgetItem(#g_FilePanel, index, GetFilePart(*file\path))
-			SetGadgetItemData(#g_FilePanel, index, *file)
-			*file\editor = Scintilla_Gadget(#PB_Any, 0, 0, GadgetWidth(#g_FilePanel), GadgetHeight(#g_FilePanel))
+			OpenGadgetList(#g_pnl_File)
+			index = GetGadgetState(#g_pnl_File) + 1
+			AddGadgetItem(#g_pnl_File, index, GetFilePart(*file\path))
+			SetGadgetItemData(#g_pnl_File, index, *file)
+			*file\editor = Scintilla_Gadget(#PB_Any, 0, 0, GadgetWidth(#g_pnl_File), GadgetHeight(#g_pnl_File))
 			CloseGadgetList()
 			UseGadgetList(oldGadgetList)
 		EndIf
@@ -1045,9 +1063,9 @@ Procedure File_Activate(*file.FILE, carretPos = -1, parse = #False)
 	Protected index
 	
 	If *file
-		For index = 0 To CountGadgetItems(#g_FilePanel) - 1
-			If GetGadgetItemData(#g_FilePanel, index) = *file
-				SetGadgetState(#g_FilePanel, index)
+		For index = 0 To CountGadgetItems(#g_pnl_File) - 1
+			If GetGadgetItemData(#g_pnl_File, index) = *file
+				SetGadgetState(#g_pnl_File, index)
 				SetActiveGadget(*file\editor)
 				
 				If carretPos >= 0
@@ -1073,7 +1091,7 @@ EndProcedure
 Procedure File_Open(path.s, newFile = #False, activate = #False)
 	Protected carret, option.s, optionName.s, optionVal.s
 	Protected file, *file.FILE, *tempFile.FILE
-	path = ReplaceString(path, "\", "/")
+	path = ReplaceString(path, #NPS$, #PS$)
 	
 	If newFile = #False
 		If path = ""
@@ -1159,7 +1177,7 @@ Procedure File_Save(*file.FILE, saveAs = #False)
 			path + ".txt"
 		EndIf
 		
-		path = ReplaceString(path, "\", "/")
+		path = ReplaceString(path, #NPS$, #PS$)
 		
 		*tempFile = File_Find(path)
 		If *tempFile And MessageRequester(#AppTitle$, path + #NL$ + "a tab with this filename already exists - overwrite?", #PB_MessageRequester_YesNo) <> #PB_MessageRequester_Yes
@@ -1192,9 +1210,9 @@ Procedure File_Save(*file.FILE, saveAs = #False)
 		StatusBarText(0, 1, "Code saved", #PB_StatusBar_Center)		
 		SetWindowTitle(#w_Main, #AppTitle$ + " - " + *file\path)
 		
-		For index = 0 To CountGadgetItems(#g_FilePanel) - 1
-			If GetGadgetItemData(#g_FilePanel, index) = *file
-				SetGadgetItemText(#g_FilePanel, index, GetFilePart(*file\path))
+		For index = 0 To CountGadgetItems(#g_pnl_File) - 1
+			If GetGadgetItemData(#g_pnl_File, index) = *file
+				SetGadgetItemText(#g_pnl_File, index, GetFilePart(*file\path))
 				Break
 			EndIf
 		Next
@@ -1235,9 +1253,9 @@ Procedure File_Close(*file.FILE, quit = #False, saveChanges = #True)
 	
 	System_Init(System\RAM_Size, System\STACK_Size)
 	
-	For index = 0 To CountGadgetItems(#g_FilePanel) - 1
-		If GetGadgetItemData(#g_FilePanel, index) = *file
-			RemoveGadgetItem(#g_FilePanel, index)
+	For index = 0 To CountGadgetItems(#g_pnl_File) - 1
+		If GetGadgetItemData(#g_pnl_File, index) = *file
+			RemoveGadgetItem(#g_pnl_File, index)
 			Break
 		EndIf
 	Next
@@ -1252,7 +1270,7 @@ Procedure File_Close(*file.FILE, quit = #False, saveChanges = #True)
 	Next
 	
 	If *CurrentFile = #Null
-		*CurrentFile = File_Activate(GetGadgetItemData(#g_FilePanel, MAX(index - 1, 0)))
+		*CurrentFile = File_Activate(GetGadgetItemData(#g_pnl_File, MAX(index - 1, 0)))
 	EndIf
 	
 	If *file = #Null And quit = #False
@@ -1280,11 +1298,11 @@ Procedure File_UpdateIni()
 EndProcedure
 
 Procedure File_Next()
-	Protected index = GetGadgetState(#g_FilePanel) + 1
-	If index >= CountGadgetItems(#g_FilePanel)
+	Protected index = GetGadgetState(#g_pnl_File) + 1
+	If index >= CountGadgetItems(#g_pnl_File)
 		index = 0
 	EndIf
-	File_Activate(GetGadgetItemData(#g_FilePanel, index))
+	File_Activate(GetGadgetItemData(#g_pnl_File, index), -1, #True)
 EndProcedure
 
 ;-
@@ -1328,14 +1346,14 @@ Procedure System_Init(ramSize, stackSize)
 		Scintilla_ClearError(*CurrentFile\editor)
 	EndIf
 	
-	For i = CountGadgetItems(#g_Monitor) - 1 To 0 Step -1
-		SetGadgetItemText(#g_Monitor, i, "" + #LF$ + "" + #LF$ + "")
+	For i = CountGadgetItems(#g_lsi_Monitor) - 1 To 0 Step -1
+		SetGadgetItemText(#g_lsi_Monitor, i, "" + #LF$ + "" + #LF$ + "")
 	Next
-	ClearGadgetItems(#g_SubList)
-	ClearGadgetItems(#g_FieldList)
-	ClearGadgetItems(#g_LabelList)
-	ClearGadgetItems(#g_Debug)
-	ClearGadgetItems(#g_Variables)
+	ClearGadgetItems(#g_lsv_Sub)
+	ClearGadgetItems(#g_lsv_Field)
+	ClearGadgetItems(#g_lsv_Label)
+	ClearGadgetItems(#g_edi_Debug)
+	ClearGadgetItems(#g_lsi_Variables)
 	
 	Parser\main\name  = ".main."
 	AddMapElement(Parser\sub(), UCase(Parser\main\name))
@@ -1403,6 +1421,10 @@ Procedure System_Init(ramSize, stackSize)
 	Constant_Add(#SYM_ADDRESS, "#TIME", @System\ADR_Time)
 	Constant_Add(#SYM_VARIABLE, "#RAM", System\RAM_Size)
 	Constant_Add(#SYM_VARIABLE, "#STACK", System\STACK_Size)
+	Constant_Add(#SYM_CONSTANT, "#IN_KEY", %001)
+	Constant_Add(#SYM_CONSTANT, "#IN_MOUSE", %010)
+	Constant_Add(#SYM_CONSTANT, "#IN_BUTTON", %100)
+	Constant_Add(#SYM_CONSTANT, "#IN_ALL", %111)
 	Constant_Add(#SYM_CONSTANT, "#VRAM", System\VRAM_Size)
 	Constant_Add(#SYM_CONSTANT, "#SCREEN_ACTIVE", System\SCR_Active)
 	Constant_Add(#SYM_CONSTANT, "#SCREEN_W", System\SCR_Width)
@@ -1438,6 +1460,7 @@ Procedure System_Init(ramSize, stackSize)
 	Constant_Add(#SYM_CONSTANT, "#GR", #FLAG_GREATER)
 	Constant_Add(#SYM_CONSTANT, "#LO", #FLAG_LOWER)
 	
+	System\ADR_TEMPVAR = System\ADR_Var
 	System\ADR_Var = System\ADR_VarStart - 8 ; make room for a few internal variables
 	System\CPU\IP = 0
 	System\CPU\SP = System\ADR_StackStart
@@ -1449,7 +1472,7 @@ Procedure System_Start(ramSize_, stackSize_)
 	Protected *file.FILE
 	Protected path.s, currentFile.s, index
 	
-	RamSize = ramSize_
+	RamSize = ramSize_ - stackSize_
 	StackSize = stackSize_
 	
 	SetCurrentDirectory(GetPathPart(ProgramFilename()))
@@ -1457,9 +1480,9 @@ Procedure System_Start(ramSize_, stackSize_)
 	
 	System\state | #STATE_SILENT
 	If OpenPreferences("Settings.ini")
-		currentFile = ReplaceString(ReadPreferenceString("CURRENTFILE", ""), "\", "/")
+		currentFile = ReplaceString(ReadPreferenceString("CURRENTFILE", ""), #NPS$, #PS$)
 		Repeat
-			path = ReplaceString(ReadPreferenceString("FILE" + Str(index), ""), "\", "/")
+			path = ReplaceString(ReadPreferenceString("FILE" + Str(index), ""), #NPS$, #PS$)
 			If currentFile And path = currentFile
 				*file = File_Open(path)
 			ElseIf path
@@ -1533,7 +1556,7 @@ Procedure System_RunState(state, updateGadget = #True)
 			EndIf
 			
 			If (previousState & #STATE_RUN) = 0
-				AddGadgetItem(#g_Status, -1, TIMESTR() + "   program started") 
+				AddGadgetItem(#g_lsv_Status, -1, TIMESTR() + "   program started") 
 			EndIf
 		Else
 			SetToolBarButtonState(#t_Main, #m_Run, 0)
@@ -1543,7 +1566,7 @@ Procedure System_RunState(state, updateGadget = #True)
 				HideWindow(#w_Screen, 1)
 			EndIf
 			If previousState & #STATE_RUN
-				AddGadgetItem(#g_Status, -1, TIMESTR() + "   program stopped")
+				AddGadgetItem(#g_lsv_Status, -1, TIMESTR() + "   program stopped")
 			EndIf
 			If SoundSystemOK
 				StopSound(#PB_All)
@@ -1563,17 +1586,17 @@ Procedure System_RunState(state, updateGadget = #True)
 			System\wait = -1
 			
 			If previousState & #STATE_STEP = 0
-				AddGadgetItem(#g_Status, -1, TIMESTR() + "   program paused")
+				AddGadgetItem(#g_lsv_Status, -1, TIMESTR() + "   program paused")
 			EndIf
 		Else
 			SetToolBarButtonState(#t_Main, #m_Step, 0)
 			
 			If previousState & #STATE_STEP
-				AddGadgetItem(#g_Status, -1, TIMESTR() + "   program continued")
+				AddGadgetItem(#g_lsv_Status, -1, TIMESTR() + "   program continued")
 			EndIf
 		EndIf
 		
-		SetGadgetState(#g_Status, CountGadgetItems(#g_Status) - 1)
+		SetGadgetState(#g_lsv_Status, CountGadgetItems(#g_lsv_Status) - 1)
 	EndIf
 EndProcedure
 
@@ -1606,9 +1629,9 @@ Procedure System_Update_SubList()
 	Protected index
 	Protected NewList subList.DATASECT()
 	
-	ClearGadgetItems(#g_SubList)
-	ClearGadgetItems(#g_FieldList)
-	ClearGadgetItems(#g_LabelList)
+	ClearGadgetItems(#g_lsv_Sub)
+	ClearGadgetItems(#g_lsv_Field)
+	ClearGadgetItems(#g_lsv_Label)
 	
 	ForEach Parser\datasect()
 		If Parser\datasect()\isSub
@@ -1621,16 +1644,16 @@ Procedure System_Update_SubList()
 	SortStructuredList(subList(), #PB_Sort_Ascending, OffsetOf(DATASECT\lineNr), TypeOf(DATASECT\lineNr))
 	
 	ForEach subList()
-		AddGadgetItem(#g_SubList, index, RemoveString(TokenText(subList()\token), ":"))
-		SetGadgetItemData(#g_SubList, index, subList()\lineNr)
+		AddGadgetItem(#g_lsv_Sub, index, RemoveString(TokenText(subList()\token), ":"))
+		SetGadgetItemData(#g_lsv_Sub, index, subList()\lineNr)
 		index + 1
 	Next
 	
 	If MapSize(Parser\field()) > 0
 		index = 0
 		ForEach Parser\field()
-			AddGadgetItem(#g_FieldList, index, TokenText(Parser\field()\token))
-			SetGadgetItemData(#g_FieldList, index, Parser\field()\lineNr)
+			AddGadgetItem(#g_lsv_Field, index, TokenText(Parser\field()\token))
+			SetGadgetItemData(#g_lsv_Field, index, Parser\field()\lineNr)
 			index + 1
 		Next
 	EndIf
@@ -1638,8 +1661,8 @@ Procedure System_Update_SubList()
 	If MapSize(Parser\label()) > 0
 		index = 0
 		ForEach Parser\label()
-			AddGadgetItem(#g_LabelList, index, TokenText(Parser\label()\token))
-			SetGadgetItemData(#g_LabelList, index, Parser\label()\lineNr)
+			AddGadgetItem(#g_lsv_Label, index, TokenText(Parser\label()\token))
+			SetGadgetItemData(#g_lsv_Label, index, Parser\label()\lineNr)
 			index + 1
 		Next
 	EndIf
@@ -1662,7 +1685,7 @@ Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
 		Protected NewList varList.VARLIST(), subName.s, startIndex
 		System_Collect_Variables(*sub, varList())
 		
-		Select GetGadgetState(#g_VarSort)
+		Select GetGadgetState(#g_cmb_VarSort)
 			Case 0
 				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\sub), #PB_String)
 				If FirstElement(varList())
@@ -1690,28 +1713,28 @@ Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
 				SortStructuredList(varList(), #PB_Sort_Ascending, OffsetOf(VARLIST\value), #PB_String)
 		EndSelect
 		
-		ClearGadgetItems(#g_Variables)
+		ClearGadgetItems(#g_lsi_Variables)
 		
 		lineNr = 0
 		ForEach varList()
 			With varList()\var
 				\infoLineNr = lineNr
 				
-				AddGadgetItem(#g_Variables, lineNr, varList()\sub)
-				SetGadgetItemText(#g_Variables, lineNr, varList()\name, 1)
-				SetGadgetItemText(#g_Variables, lineNr, varList()\type, 2)
-				SetGadgetItemText(#g_Variables, lineNr, varList()\address, 3)
+				AddGadgetItem(#g_lsi_Variables, lineNr, varList()\sub)
+				SetGadgetItemText(#g_lsi_Variables, lineNr, varList()\name, 1)
+				SetGadgetItemText(#g_lsi_Variables, lineNr, varList()\type, 2)
+				SetGadgetItemText(#g_lsi_Variables, lineNr, varList()\address, 3)
 				GETVAL(\adr, valF1)
-				SetGadgetItemText(#g_Variables, lineNr, FSTR(valF1), 4)
+				SetGadgetItemText(#g_lsi_Variables, lineNr, FSTR(valF1), 4)
 				
 				If varList()\var\isLocal
-					SetGadgetItemColor(#g_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 245, 230), 1)
+					SetGadgetItemColor(#g_lsi_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 245, 230), 1)
 				EndIf
 				If varList()\var\isParam
-					SetGadgetItemColor(#g_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 225, 210), 1)
+					SetGadgetItemColor(#g_lsi_Variables, lineNr, #PB_Gadget_BackColor, RGB(255, 225, 210), 1)
 				EndIf
 				
-				SetGadgetItemData(#g_Variables, lineNr, varList()\var)
+				SetGadgetItemData(#g_lsi_Variables, lineNr, varList()\var)
 				lineNr + 1
 			EndWith
 		Next
@@ -1724,9 +1747,9 @@ Procedure System_Update_VarList(*sub.SUB, wait = #True, init = #False)
 				GETVAL(\adr, value)
 				If \prevValue <> value Or \adr = VarAddress
 					\prevValue = value
-					SetGadgetItemText(#g_Variables, \infoLineNr, FSTR(value), 4)
+					SetGadgetItemText(#g_lsi_Variables, \infoLineNr, FSTR(value), 4)
 					If \adr = VarAddress
-						SetGadgetState(#g_Variables, \infoLineNr)
+						SetGadgetState(#g_lsi_Variables, \infoLineNr)
 					EndIf
 					valueChanged = #True
 				EndIf
@@ -1739,15 +1762,15 @@ EndProcedure
 
 Procedure System_Update_Monitor(ip, direction = 0)
 	Protected curIP, varIP, prevIP
-	Protected paramNr, adr, op.a, opIP, index, isData, lineNr = -1
+	Protected paramNr, adr, op.a, opIP, index, lastDataAdr = -1
 	Protected *opcode.OPCODE, *var.VARIABLE, *sym.SYMTABLE
 	Protected code.s, varIndex.s
-	Protected lineCount = CountGadgetItems(#g_Monitor) - 1
+	Protected lineCount = CountGadgetItems(#g_lsi_Monitor) - 1
 	
 	For index = 0 To lineCount
-		SetGadgetItemText(#g_Monitor, index, "" + #LF$ + "" + #LF$ + "" + #LF$ + "" + #LF$ + "")
-		SetGadgetItemData(#g_Monitor, index, 0)
-		SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, #PB_Default)
+		SetGadgetItemText(#g_lsi_Monitor, index, "" + #LF$ + "" + #LF$ + "" + #LF$ + "" + #LF$ + "")
+		SetGadgetItemData(#g_lsi_Monitor, index, 0)
+		SetGadgetItemColor(#g_lsi_Monitor, index, #PB_Gadget_BackColor, #PB_Default)
 	Next
 	If System\programSize <= 0
 		ProcedureReturn
@@ -1755,9 +1778,11 @@ Procedure System_Update_Monitor(ip, direction = 0)
 	
 	curIP = CLAMP(*CPU\IP, 0, System\programSize)
 	If 1;direction
-		While ((direction < 0 And curIP > 0) Or (curIP < System\programSize)) And System\symTable(curIP)\type <> #SYM_OPCODE
-			curIP + direction
-		Wend
+		If direction
+			While ((direction < 0 And curIP > 0) Or (curIP < System\programSize)) And System\symTable(curIP)\type <> #SYM_OPCODE
+				curIP + direction
+			Wend
+		EndIf
 		
 		Protected skipOp = 10
 		While *CPU\IP > 0
@@ -1773,34 +1798,33 @@ Procedure System_Update_Monitor(ip, direction = 0)
 	EndIf
 	
 	index = 0
+	
 	Repeat
 		prevIP = *CPU\IP
 		GETVAL(*CPU\IP, adr)
 		*sym = @System\symTable(*CPU\IP)
 		
-		isData = #False
 		ForEach Parser\dataSect()
 			With Parser\dataSect()
 				If \startAdr = *CPU\IP
 					If \isLabel
-						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
-						SetGadgetItemData(#g_Monitor, index, \lineNr)
+						SetGadgetItemText(#g_lsi_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_lsi_Monitor, index, \lineNr)
 						index + 1
 					EndIf
 					If \isField
 						If *CPU\IP >= Parser\dataSect()\startAdr And *CPU\IP < Parser\dataSect()\endAdr
-							isData = #True
+							lastDataAdr = Parser\dataSect()\endAdr
 						EndIf
-						
-						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
-						SetGadgetItemData(#g_Monitor, index, \lineNr)
-						SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 0)
+						SetGadgetItemText(#g_lsi_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_lsi_Monitor, index, \lineNr)
+						SetGadgetItemColor(#g_lsi_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 0)
 						index + 1
 					EndIf
 					If \isSub
-						SetGadgetItemText(#g_Monitor, index, TokenText(\token))
-						SetGadgetItemData(#g_Monitor, index, \lineNr)
-						SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 235, 235), 0)
+						SetGadgetItemText(#g_lsi_Monitor, index, TokenText(\token))
+						SetGadgetItemData(#g_lsi_Monitor, index, \lineNr)
+						SetGadgetItemColor(#g_lsi_Monitor, index, #PB_Gadget_BackColor, RGB(250, 235, 235), 0)
 						index + 1
 					EndIf
 				EndIf
@@ -1839,7 +1863,7 @@ Procedure System_Update_Monitor(ip, direction = 0)
 				If *sym\type = #SYM_SUBPARAM
 					*var = System_VarByIP(*CPU\IP)
 					If *var
-						code + "[SP" + " + " + Str(*var\adr) + "]"
+						code + "[SP + " + Str(*var\adr) + "]"
 					Else
 						code + "[SP???]"
 					EndIf
@@ -1855,7 +1879,11 @@ Procedure System_Update_Monitor(ip, direction = 0)
 			*CPU\IP + 1
 			
 			If VarIndex
-				code + " + " + VarIndex
+				If Val(VarIndex) < 0
+					code + " - " + Abs(Val(VarIndex))
+				Else
+					code + " + " + VarIndex
+				EndIf
 			EndIf
 			
 			If System\adrMode & #ADR_POINTER: code + "]" : EndIf
@@ -1866,30 +1894,28 @@ Procedure System_Update_Monitor(ip, direction = 0)
 		Next
 		
 		Select op
-			Case #OP_IFL, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE
+			Case #OP_IST, #OP_ISF, #OP_IGR, #OP_ILO, #OP_IGE, #OP_ILE, #OP_IEQ, #OP_INE
 				GETVAL(*CPU\IP, valF1)
-				SetGadgetItemText(#g_Monitor, index, FSTR(valF1), 3)
+				SetGadgetItemText(#g_lsi_Monitor, index, FSTR(valF1), 3)
 				code + FSTR(valF1)
 				*CPU\IP + 1
 		EndSelect
 		
-		SetGadgetItemText(#g_Monitor, index, MEMSTR(prevIP), 0)
+		SetGadgetItemText(#g_lsi_Monitor, index, MEMSTR(prevIP), 0)
 		For paramNr = 0 To *CPU\IP - prevIP - 1
 			GETVAL(prevIP + paramNr, valF1)
-			SetGadgetItemText(#g_Monitor, index, FSTR(valF1), 1 + paramNr)
+			SetGadgetItemText(#g_lsi_Monitor, index, FSTR(valF1), 1 + paramNr)
 			If prevIP + paramNr = curIP
-				SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 1 + paramNr)
+				SetGadgetItemColor(#g_lsi_Monitor, index, #PB_Gadget_BackColor, RGB(235,235,235), 1 + paramNr)
 			EndIf
 		Next
 		
-		SetGadgetItemText(#g_Monitor, index, code , 4)
-		SetGadgetItemData(#g_Monitor, index, System_LineNrByIP(opIP))
-		
-		If isData
-			SetGadgetItemColor(#g_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 4)
+		SetGadgetItemText(#g_lsi_Monitor, index, code , 4)
+		SetGadgetItemData(#g_lsi_Monitor, index, System_LineNrByIP(opIP))
+		If *CPU\IP <= lastDataAdr
+			SetGadgetItemColor(#g_lsi_Monitor, index, #PB_Gadget_BackColor, RGB(250, 250, 235), 4)
 		EndIf
 		
-		If lineNr = -1 : lineNr = index : EndIf
 		index + 1
 	Until *CPU\IP >= System\programSize Or index >= lineCount
 	
@@ -1937,14 +1963,14 @@ Procedure System_Error(line, message.s, warning = 0)
 		ProcedureReturn
 	EndIf
 	
-	Protected index = CountGadgetItems(#g_Status)
+	Protected index = CountGadgetItems(#g_lsv_Status)
 	Protected errLine = line
 	
 	If SYSTEM_NOERROR()
 		If line >= 0
 			errLine = Max(line - 1 , 0)
 			Protected text.s = "Line " + Str(line + 1) + ": " + message
-			AddGadgetItem(#g_Status, index, TIMESTR() + "   " + text) 
+			AddGadgetItem(#g_lsv_Status, index, TIMESTR() + "   " + text) 
 			If *CurrentFile
 				If warning = 0
 					Scintilla_SetErrorLine(*CurrentFile\editor, errLine, text)
@@ -1954,15 +1980,15 @@ Procedure System_Error(line, message.s, warning = 0)
 				SetActiveGadget(*CurrentFile\editor)
 			EndIf
 		Else
-			AddGadgetItem(#g_Status, index, TIMESTR() + "   " + message) 
+			AddGadgetItem(#g_lsv_Status, index, TIMESTR() + "   " + message) 
 		EndIf
 	EndIf
 	
-	SetGadgetItemData(#g_Status, index, line)
-	SetGadgetState(#g_Status, index)
+	SetGadgetItemData(#g_lsv_Status, index, line)
+	SetGadgetState(#g_lsv_Status, index)
 	
 	If warning
-		SetGadgetItemColor(#g_Status, index, #PB_Gadget_BackColor, RGB(255,0,0))
+		SetGadgetItemColor(#g_lsv_Status, index, #PB_Gadget_BackColor, RGB(255,0,0))
 	Else
 		System\state | #STATE_ERROR
 		RunState | #STATE_END
@@ -1996,11 +2022,14 @@ Procedure System_Help()
 		HideWindow(#w_Help, 0)
 	Else
 		If OpenWindow(#w_Help, 0, 0, 800, 600, #AppTitle$ + " - Help", #PB_Window_TitleBar | #PB_Window_SystemMenu | #PB_Window_SizeGadget)
-			MessageRequester("",GetPathPart(ProgramFilename()) + "_help/help.html")
-			WebGadget(#g_Help, 5, 5, 790, 590, GetPathPart(ProgramFilename()) + "_help/help.html")
-			SetGadgetAttribute(#g_Help, #PB_Web_NavigationCallback, @Help_Callback())
-			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopupMenu, 1)
-			SetGadgetAttribute(#g_Help, #PB_Web_BlockPopups, 1)
+			CompilerIf #PB_Compiler_Debugger
+				WebGadget(#g_web_Help, 5, 5, 790, 590, #PB_Compiler_FilePath + "_help" + #PS$ + "help.html")
+			CompilerElse
+				WebGadget(#g_web_Help, 5, 5, 790, 590, GetPathPart(ProgramFilename()) + "_help" + #PS$ + "help.html")
+			CompilerEndIf
+			SetGadgetAttribute(#g_web_Help, #PB_Web_NavigationCallback, @Help_Callback())
+			SetGadgetAttribute(#g_web_Help, #PB_Web_BlockPopupMenu, 1)
+			SetGadgetAttribute(#g_web_Help, #PB_Web_BlockPopups, 1)
 		EndIf
 	EndIf
 EndProcedure
@@ -2263,6 +2292,25 @@ Procedure Parse_WriteI(value, type, *token.TOKEN = #Null, ip = -1)
 	ProcedureReturn #False
 EndProcedure
 
+Procedure Parse_WriteS(text.s)
+	If text
+		Protected *c.Character = @text + SizeOf(Character)
+		Protected l = Len(text) - 2
+		Protected strAdr = System\ADR_Var - l
+		Protected adr = strAdr
+		System\ADR_Var = strAdr - 1
+		Parse_WriteI(l, #SYM_INT, #Null, adr)
+		adr + 1
+		While (l > 0) And Parse_WriteI(*c\c, #SYM_CHAR, #Null, adr)
+			adr + 1
+			*c + SizeOf(Character)
+			l - 1
+		Wend
+		
+		ProcedureReturn strAdr
+	EndIf
+EndProcedure
+
 Procedure Parse_IsNumber(param.s)
 	Protected *c.Character = @param
 	Protected decPoint
@@ -2409,7 +2457,7 @@ EndProcedure
 
 Procedure Parse_AddSound(*variable.VARIABLE, path.s)
 	Protected key.s = UCase(Parser\curVar\name)
-	path = ReplaceString(path, "\", "/")
+	path = ReplaceString(path, #NPS$, #PS$)
 	
 	If SoundSystemOK
 		If FindMapElement(System\sound(), key) 
@@ -2584,9 +2632,8 @@ Procedure Parse_Token(*sub.SUB, *token.TOKEN, paramNr = 0, createNew = 0, isLoca
 		Parse_WriteF(*token\value)
 		
 	ElseIf *token\type = #T_STRING
-		
-		Parse_SetAddressMode(paramNr, #ADR_DIRECT)
-		Parse_WriteI(*token, #SYM_INT)
+		Protected strAdr = Parse_WriteS(TokenText(*token))
+		Parse_WriteI(strAdr, #SYM_ADDRESS)
 		
 	ElseIf *token\type = #T_VARIABLE
 		
@@ -2762,7 +2809,8 @@ Procedure Parse_Sub(*sub.SUB, readState)
 			Parser\curAdrMode = 0
 			
 			If Parser\curToken\type = #T_VARIABLE
-				Parse_Var(*sub, #OP_PSH, 0, #True, #False)
+				Parse_WriteI(#OP_PSH, #SYM_OPCODE)
+				Parse_Var(*sub, 0, #True, #False)
 			Else
 				Parse_WriteI(#OP_PSH, #SYM_OPCODE)
 				Parse_Token(*sub, Parser\curToken)
@@ -2859,13 +2907,9 @@ Procedure Parse_Field(*sub.SUB)
 	ProcedureReturn #False
 EndProcedure
 
-Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
+Procedure Parse_Var(*sub.SUB, paramNr = 0, getVarType = #True, getArray = #True, isLocal = #False)
 	Protected *curToken.TOKEN = Parser\curToken
 	Protected arrSize = -1, i
-	
-	If opcode
-		Parse_WriteI(opcode, #SYM_OPCODE)
-	EndIf
 	
 	If getVarType
 		Parse_VarType(*sub)
@@ -2874,14 +2918,13 @@ Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray 
 	If Parse_NextToken(#T_PERIOD) ; it's an indexed variable
 		If Parse_NextToken(#T_NUMBER)
 			Parse_SetAddressMode(paramNr, #ADR_INDX_DI)
-			Parse_WriteI(Parser\curToken\value, #SYM_INT, Parser\curToken)
-		ElseIf Parse_NextToken(#T_VARIABLE)
-			If Parse_Token(*sub, Parser\curToken, paramNr, 0, isLocal)
-				Parse_SetAddressMode(paramNr, #ADR_INDX_IN)
-			EndIf
+			Parse_WriteI(Parser\curToken\value, #SYM_INT, *curToken); Parser\curToken)
 		ElseIf Parse_NextToken(#T_CONSTANT) And FindMapElement(Constant(), UCase(Parser\curToken\text))
 			Parse_SetAddressMode(paramNr, #ADR_INDX_DI)
-			Parse_WriteI(Constant()\value, #SYM_INT, Parser\curToken)
+			Parse_WriteI(Constant()\value, #SYM_INT, *curToken);Parser\curToken)
+		ElseIf Parse_NextToken(#T_VARIABLE, #True)
+			Parse_SetAddressMode(paramNr, #ADR_INDX_IN)
+			Parse_Token(*sub, Parser\curToken, paramNr, 0, isLocal)
 		Else
 			System_Error(Parser\codeLineCount, "wrong index type")
 			ProcedureReturn #False
@@ -2902,9 +2945,9 @@ Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray 
 			If arrSize < 0
 				System_Error(Parser\curLine, "Error: negative array index")
 			Else
-				System\ADR_Var - arrSize
+				System\ADR_Var - arrSize - 1
 				For i = 0 To arrSize
-					Parse_WriteI(0, Parser\curVarType, #Null, System\ADR_Var + i)
+					Parse_WriteI(0, Parser\curVarType, #Null, System\ADR_Var + i + 1)
 				Next
 			EndIf
 		EndIf
@@ -2913,8 +2956,9 @@ Procedure Parse_Var(*sub.SUB, opcode, paramNr = 0, getVarType = #True, getArray 
 	
 	If Parse_Token(*sub, *curToken, paramNr, 0, isLocal)
 		If arrSize >= 0
-			Parse_WriteI(arrSize, Parser\curVarType, #Null, System\ADR_Var)
+ 			Parse_WriteI(arrSize, #SYM_INT, #Null, System\ADR_Var)
 			Parser\curVar\type = #SYM_ARRAY
+			System\ADR_Var - 1
 		EndIf
 		ProcedureReturn #True
 	Else
@@ -2952,7 +2996,7 @@ Procedure Parse_Param(*sub.SUB, paramNr)
 		System_Error(Parser\codeLineCount, "Wrong parameter type: " + GetTokenName(type))
 	Else
 		If type = #T_VARIABLE
-			result = Parse_Var(*sub, #Null, paramNr, #False, #False)
+			result = Parse_Var(*sub, paramNr, #False, #False)
 		Else
 			result = Parse_Token(*sub, Parser\curToken, paramNr)
 		EndIf
@@ -2965,7 +3009,6 @@ Procedure Parse_Expression(*sub.SUB, *opcode.OPCODE, paramNr, readState)
 	Protected *var.VARIABLE = Parser\curVar
 	Protected adrMode = Parser\curAdrMode
 	Protected varAdr = System\ADR_VarStart - paramNr
-	
 	Protected *curOp.OPCODE, curParam
 	
 	If Parse_NextToken(#T_BRACKET_OPEN)
@@ -2981,7 +3024,8 @@ Procedure Parse_Expression(*sub.SUB, *opcode.OPCODE, paramNr, readState)
 			System\adrMode = 0
 			Select Parser\curToken\type
 				Case #T_VARIABLE
-					Parse_Var(*sub, #OP_SET, 0, #False, #False)
+					Parse_WriteI(#OP_SET, #SYM_OPCODE)
+					Parse_Var(*sub, 0, #False, #False)
 				Case #T_NUMBER
 					If FindString(TokenText(Parser\curToken), ".")
 						Parse_WriteI(0, #SYM_FLOAT, #Null, varAdr)
@@ -3071,7 +3115,7 @@ Procedure Parse_First(*sub.SUB, readState, depth)
 								
 								While Parse_NextToken(#T_VARIABLE) Or Parse_VarType(*sub)
 									If Parser\curToken\type = #T_VARIABLE
-										If Parse_Var(*childSub, #Null, 0, #False, #False,#True)
+										If Parse_Var(*childSub, 0, #False, #False, #True)
 											Parser\curVar\isParam = #True
 											*childSub\nrParams + 1
 										EndIf
@@ -3090,6 +3134,7 @@ Procedure Parse_First(*sub.SUB, readState, depth)
 						Case #T_CONSTANT
 							
 							*token = Parser\curToken
+							
 							If Parse_NextToken(#T_NUMBER, #True)
 								Constant_Add(#SYM_CONSTANT, TokenText(*token), Parser\curToken\value)
 							EndIf
@@ -3119,7 +3164,7 @@ Procedure Parse_First(*sub.SUB, readState, depth)
 					Wend
 					Parse_NextToken(#T_BRACKET_CLOSE, #True)
 				ElseIf Parse_NextToken(#T_VARIABLE, #True)
-					Parse_Var(*sub, #Null, 0, #False, #True, isLocal)
+					Parse_Var(*sub, 0, #False, #True, isLocal)
 				EndIf
 				
 			Case #T_STRING
@@ -3250,7 +3295,8 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 			Case #T_VARIABLE
 				
 				Parser\curIP = *CPU\IP
-				Parse_Var(*sub, #OP_GET, 0, #True, #False)
+				Parse_WriteI(#OP_GET, #SYM_OPCODE)
+				Parse_Var(*sub, 0, #True, #False)
 				
 			Case #T_LABEL
 				
@@ -3349,9 +3395,62 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 				
 				Select *curOpcode\ID
 						
-					Case #OP_IFL, #OP_ILO, #OP_IGR, #OP_ILE, #OP_IGE, #OP_IEQ, #OP_INE
+; 					Case #OP_IST, #OP_ISF
+; 						
+; 						If Parse_WriteI(*curOpcode\ID, #SYM_OPCODE, Parser\curToken)
+; 							*dataSect = Parser\curDataSect
+; 							
+; 							prevIP = *CPU\IP
+; 							Parse_WriteI(0, #SYM_ADDRESS)
+; 							
+; 							Protected NewList ExitAdr()
+; 							Protected addIp = 0
+; 							
+; 							If Parse_NextToken(#T_BRACKET_OPEN, #True)
+; 								Parse_AddBracket()
+; 								If Parse_Main(*sub, readState | #READ_IF, depth + 1)
+; 									If Parse_NextToken(#T_ELSE)
+; 										SETVAL(prevIP, *CPU\IP + 2)
+; 										Repeat
+; 											If Parse_NextToken(#T_BRACKET_OPEN, #True)
+; 												Parse_AddBracket()
+; 												Parse_WriteI(#OP_JMP, #SYM_OPCODE)
+; 												Parse_WriteI(*CPU\IP + 1, #SYM_ADDRESS)
+; 												AddElement(ExitAdr())
+; 												ExitAdr() = *CPU\IP - 1
+; 												Parse_Main(*sub, readState | #READ_ELSE, depth + 1)
+; 											EndIf
+; 										Until Parse_NextToken(#T_ELSE) = 0
+; 									EndIf
+; 									If Parse_NextType(1, #T_ELSE) >= 0
+; 										SETVAL(prevIP, *CPU\IP + 2)
+; 									ElseIf ListSize(ExitAdr()) = 0
+; 										SETVAL(prevIP, *CPU\IP)
+; 									EndIf
+; 								EndIf
+; 							EndIf
+; 							
+; 							ForEach ExitAdr()
+; 								SETVAL(ExitAdr(), *CPU\IP)
+; 							Next
+; 							ClearList(ExitAdr())
+; 							
+; 							If *dataSect
+; 								*dataSect\endAdr = *CPU\IP
+; 							EndIf
+; 						EndIf
 						
-						If Parse_Expression(*sub, *curOpcode, 0, readState)
+					Case #OP_IST, #OP_ISF, #OP_ILO, #OP_IGR, #OP_ILE, #OP_IGE, #OP_IEQ, #OP_INE
+						
+						Protected result
+						
+						If *curOpcode\ID = #OP_IST Or *curOpcode\ID = #OP_ISF
+							result = Parse_WriteI(*curOpcode\ID, #SYM_OPCODE, Parser\curToken)
+						Else
+							result = Parse_Expression(*sub, *curOpcode, 0, readState)
+						EndIf
+						
+						If result
 							*dataSect = Parser\curDataSect
 							
 							prevIP = *CPU\IP
@@ -3396,14 +3495,31 @@ Procedure Parse_Main(*sub.SUB, readState, depth)
 						
 					Case #OP_DBG
 						
-						If Parse_NextToken(#T_STRING, #True)
-							Parser\curIP = *CPU\IP
-							System\adrMode = 0
-							
-							Parse_WriteI(*curOpcode\ID, #SYM_OPCODE)
+						System\adrMode = 0
+						If Parse_NextToken(#T_VARIABLE)
 							Parser\tokenIndex - 1
+							Parse_WriteI(#OP_DBGF, #SYM_OPCODE)
 							Parse_Param(*sub, 0)
-							Parse_Param(*sub, 1)
+						ElseIf Parse_NextToken(#T_CONSTANT)
+							Parser\tokenIndex - 1
+							Parse_WriteI(#OP_DBGF, #SYM_OPCODE)
+							Parse_Param(*sub, 0)
+						ElseIf Parse_NextToken(#T_STRING)
+							Parser\tokenIndex - 1
+							Parse_WriteI(#OP_DBGS, #SYM_OPCODE)
+							Parse_Param(*sub, 0)
+						ElseIf Parse_NextToken(#T_BRACKET_OPEN, #True)
+							If Parse_NextToken(#T_STRING, #True)
+								Parser\curIP = *CPU\IP
+								Parse_WriteI(*curOpcode\ID, #SYM_OPCODE)
+								Parser\tokenIndex - 1
+								Parse_Param(*sub, 0)
+							EndIf
+							If Parse_NextToken(#T_VARIABLE, #True)
+								Parser\tokenIndex - 1
+								Parse_Param(*sub, 1)
+							EndIf
+							Parse_NextToken(#T_BRACKET_CLOSE, #True)
 						EndIf
 						
 					Default
@@ -3537,7 +3653,7 @@ Procedure Parse_Start(*file.FILE, parseFull = #True)
 	EndIf
 	
 	If System\state & #STATE_SILENT = 0
-		AddGadgetItem(#g_Status, -1, TIMESTR() + "   parsing finished in " + FSTR((ElapsedMilliseconds() - StartTime) / 1000.0) + " seconds") 
+		AddGadgetItem(#g_lsv_Status, -1, TIMESTR() + "   parsing finished in " + FSTR((ElapsedMilliseconds() - StartTime) / 1000.0) + " seconds") 
 	EndIf
 	
 	StatusBarText(0, 0, "RAM: " + Str(System\RAM_Size) + " Size: " + Str(System\programSize) + " / " + Str(System\ADR_Var - System\programSize) + " free", #PB_StatusBar_Center)
@@ -3663,9 +3779,9 @@ Procedure OP_MIN()
 	GETVAL_READ(System\nextIP, valF2)
 	If valF1 < valF2
 		SETVAL(*CPU\V, valF2)
-		*CPU\FLAGS = 1
+		*CPU\FLAGS = #True
 	Else
-		*CPU\FLAGS = 0
+		*CPU\FLAGS = #False
 	EndIf
 EndProcedure
 Procedure OP_MAX()
@@ -3673,9 +3789,9 @@ Procedure OP_MAX()
 	GETVAL_READ(System\nextIP, valF2)
 	If valF1 > valF2
 		SETVAL(*CPU\V, valF2)
-		*CPU\FLAGS = 1
+		*CPU\FLAGS = #True
 	Else
-		*CPU\FLAGS = 0
+		*CPU\FLAGS = #False
 	EndIf
 EndProcedure
 Procedure OP_RSD()
@@ -3693,38 +3809,44 @@ Procedure OP_COS()
 	GETVAL(*CPU\V, valF1)
 	SETVAL(*CPU\V, Cos(valF1))
 EndProcedure
-Procedure OP_IFL()
-	GETVAL_READ(System\nextIP, valI1)
-	If *CPU\FLAGS & valI1
+Procedure OP_IST()
+	If *CPU\FLAGS = #True
+		System\nextIP + 1
+	Else
+		GETVAL(System\nextIP, System\nextIP)
+	EndIf
+EndProcedure
+Procedure OP_ISF()
+	If *CPU\FLAGS = #False
 		System\nextIP + 1
 	Else
 		GETVAL(System\nextIP, System\nextIP)
 	EndIf
 EndProcedure
 Procedure OP_IGR()
-	COMPARE(>, #FLAG_GREATER, #FLAG_LOWER | #FLAG_EQUAL)
+	COMPARE(>)
 EndProcedure
 Procedure OP_ILO()
-	COMPARE(<, #FLAG_LOWER, #FLAG_GREATER | #FLAG_EQUAL)
+	COMPARE(<)
 EndProcedure
 Procedure OP_IEQ()
-	COMPARE(=, #FLAG_EQUAL, #FLAG_NOTEQUAL)
+	COMPARE(=)
 EndProcedure
 Procedure OP_IGE()
-	COMPARE(>=, #FLAG_GREATER | #FLAG_EQUAL, #FLAG_LOWER)
+	COMPARE(>=)
 EndProcedure
 Procedure OP_ILE()
-	COMPARE(<=, #FLAG_LOWER | #FLAG_EQUAL, #FLAG_GREATER)
+	COMPARE(<=)
 EndProcedure
 Procedure OP_INE()
-	COMPARE(<>, #FLAG_NOTEQUAL, #FLAG_EQUAL)
+	COMPARE(<>)
 EndProcedure
 Procedure OP_JMF()
-	GETVAL_READ(System\nextIP, valF1)
+	GETVAL_READ(System\nextIP, valI1)
 	GETNEXTADRMODE()
-	GETVAL_READ(System\nextIP, valF2)
-	If *CPU\FLAGS = valF1
-		System\nextIP = valF2
+	GETVAL_READ(System\nextIP, valI2)
+	If *CPU\FLAGS = Bool(valI1)
+		System\nextIP = valI2
 	EndIf
 EndProcedure
 Procedure OP_JMP()
@@ -4035,43 +4157,44 @@ Procedure OP_DLY()
 	EndIf
 EndProcedure
 Procedure OP_INP()
+	Protected result = 0
 	If System\SCR_Active
-		ExamineMouse()
-		ExamineKeyboard()
 		
+; 		*CPU\FLAGS = 0
+		
+		; get keys
+		ExamineKeyboard()
 		If KeyboardPushed(#PB_Key_All)
-			*CPU\FLAGS = 1
-		Else
-			*CPU\FLAGS = 0
+			result = 1
 		EndIf
 		
-		Static newX, newY, oldX, oldY
+		; get mouse
+		ExamineMouse()
+		Static newX, newY, oldX, oldY, mouseB
 		newX = DesktopUnscaledX(WindowMouseX(#w_Screen)) * 1.0 * (System\SCR_Width / WindowWidth(#w_Screen))
 		newY = DesktopUnscaledY(WindowMouseY(#w_Screen)) * 1.0 * (System\SCR_Height / WindowHeight(#w_Screen))
 		GETVAL(System\ADR_MOUSE_X, oldX)
 		GETVAL(System\ADR_MOUSE_Y, oldY)
 		SETVAL(System\ADR_MOUSE_X, newX)
 		SETVAL(System\ADR_MOUSE_Y, newY)
-		
-		Static mouseB = 0
-		
+		mouseB = 0
 		If (oldX <> newX) Or (oldY <> newY)
-			*CPU\FLAGS | 2
+			result | 2
 		EndIf
 		If MouseButton(#PB_MouseButton_Left)
 			mouseB | #Button_Left
- 			*CPU\FLAGS | 4
+			result | 4
 		EndIf
 		If MouseButton(#PB_MouseButton_Right)
 			mouseB | #Button_Right
- 			*CPU\FLAGS | 8
+			result | 8
 		EndIf
-		
-		
 		SETVAL(System\ADR_MOUSE_B, mouseB)
 	Else
-		*CPU\FLAGS = 0
+		result = 0
 	EndIf
+	*CPU\V = System\ADR_TEMPVAR
+	SETVAL(*CPU\V, result)
 EndProcedure
 Procedure OP_KEY()
 	GETVAL_READ(System\nextIP, valI1)
@@ -4085,19 +4208,24 @@ Procedure OP_SNP()
 	If SoundSystemOK
 		If valI1
 			If IsSound(valI1)
-				If valI2 = 0
-					StopSound(valI1)
-				ElseIf valI2 = 2
-					PauseSound(valI1)
-				Else
-					PlaySound(valI1)
-				EndIf
+				Select valI2
+					Case 0
+						StopSound(valI1)
+					Case 1
+						PlaySound(valI1)
+					Case 2
+						PlaySound(valI1, #PB_Sound_Loop)
+					Case 3
+						PauseSound(valI1)
+					Default
+						PlaySound(valI1)
+				EndSelect
 			EndIf
 		Else
-			If valI2 = 2
-				PauseSound(#PB_All)
-			Else
+			If valI2 = 0
 				StopSound(#PB_All)
+			Else
+				PauseSound(#PB_All)
 			EndIf
 		EndIf
 	EndIf
@@ -4107,35 +4235,42 @@ Procedure OP_SNS()
 	
 	If SoundSystemOK
 		*CPU\FLAGS = -1
+		*CPU\V = System\ADR_TEMPVAR
 		If IsSound(valI1)
 			Select SoundStatus(valI1)
-				Case #PB_Sound_Stopped : *CPU\FLAGS = 0
-				Case #PB_Sound_Playing : *CPU\FLAGS = 1
-				Case #PB_Sound_Paused : *CPU\FLAGS = 2
+				Case #PB_Sound_Playing : SETVAL(*CPU\V, 1)
+				Case #PB_Sound_Paused : SETVAL(*CPU\V, 2)
+				Default : SETVAL(*CPU\V, 0)
 			EndSelect
 		EndIf
 	EndIf
 EndProcedure
 Procedure OP_DBG()
-	Static *token.TOKEN
-	
-	GETVAL_READ(System\nextIP, *token)
+	GETVAL_READ(System\nextIP, valI1)
 	GETNEXTADRMODE()
 	GETVAL_READ(System\nextIP, valF1)
 	
-	valS = GetGadgetItemText(#g_Debug, CountGadgetItems(#g_Debug) - 1)
-	If *token
-		valI1 = ValF1
-		valS + Trim(TokenText(*token), #DOUBLEQUOTE$)
-		valS = ReplaceString(valS, "%i", Str(valI1))
-		valS = ReplaceString(valS, "%c", Str(valI1 % 255))
-		valS = ReplaceString(valS, "%f", StrD(valF1))
-	Else
-		valS = StrD(valF1)
+	valS = GetGadgetItemText(#g_edi_Debug, CountGadgetItems(#g_edi_Debug) - 1) + GETSTR(valI1)
+	valS = ReplaceString(valS, "%i", Str(Int(valF1)))
+	valS = ReplaceString(valS, "%c", Str(Int(valF1) % 255))
+	valS = ReplaceString(valS, "%f", StrD(valF1))
+	
+	If FindString(valS, "%s")
+ 		valS = ReplaceString(valS, "%s", GETSTR(valF1))
 	EndIf
 	
-	RemoveGadgetItem(#g_Debug, CountGadgetItems(#g_Debug) - 1)
-	AddGadgetItem(#g_Debug, -1, ReplaceString(valS, "\n", #NL$))
+	RemoveGadgetItem(#g_edi_Debug, CountGadgetItems(#g_edi_Debug) - 1)
+	AddGadgetItem(#g_edi_Debug, -1, ReplaceString(valS, "\n", #NL$))
+	HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
+EndProcedure
+Procedure OP_DBGF()
+	GETVAL_READ(System\nextIP, valF1)
+	AddGadgetItem(#g_edi_Debug, -1, FSTR(valF1))
+	HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
+EndProcedure
+Procedure OP_DBGS()
+	GETVAL_WRITE(System\nextIP, valI1)
+	AddGadgetItem(#g_edi_Debug, -1, ReplaceString(GETSTR(valI1), "\n", #NL$))
 	HideWindow(#w_Debug, 0, #PB_Window_ScreenCentered)
 EndProcedure
 Procedure OP_HLT()
@@ -4229,14 +4364,14 @@ Procedure Event_Menu()
 			System_Update_Monitor(*CPU\IP, 1)
 		Case #m_CopyMonitor
 			Protected i, lastI, text.s
-			For lastI = CountGadgetItems(#g_Monitor) - 1 To 0 Step - 1
-				If Trim(GetGadgetItemText(#g_Monitor, lastI, 4))
+			For lastI = CountGadgetItems(#g_lsi_Monitor) - 1 To 0 Step - 1
+				If Trim(GetGadgetItemText(#g_lsi_Monitor, lastI, 4))
 					For i = 0 To lastI
-						text + RSet(GetGadgetItemText(#g_Monitor, i, 0), 16)
-						text + RSet(GetGadgetItemText(#g_Monitor, i, 1), 8)
-						text + RSet(GetGadgetItemText(#g_Monitor, i, 2), 8)
-						text + RSet(GetGadgetItemText(#g_Monitor, i, 3), 8) + "    "
-						text + GetGadgetItemText(#g_Monitor, i, 4) + #NL$
+						text + RSet(GetGadgetItemText(#g_lsi_Monitor, i, 0), 16)
+						text + RSet(GetGadgetItemText(#g_lsi_Monitor, i, 1), 8)
+						text + RSet(GetGadgetItemText(#g_lsi_Monitor, i, 2), 8)
+						text + RSet(GetGadgetItemText(#g_lsi_Monitor, i, 3), 8) + "    "
+						text + GetGadgetItemText(#g_lsi_Monitor, i, 4) + #NL$
 					Next
 					Break
 				EndIf
@@ -4246,10 +4381,10 @@ Procedure Event_Menu()
 			System_Help()
 		Case #m_SearchSel
 			If *CurrentFile
-				SetGadgetText(#g_SearchText, Scintilla_GetSelText(*CurrentFile\editor))
-				Scintilla_SearchStart(*CurrentFile\editor, GetGadgetText(#g_SearchText))
-				If GetGadgetText(#g_SearchText) = ""
-					SetActiveGadget(#g_SearchText)
+				SetGadgetText(#g_str_Search, Scintilla_GetSelText(*CurrentFile\editor))
+				Scintilla_SearchStart(*CurrentFile\editor, GetGadgetText(#g_str_Search))
+				If GetGadgetText(#g_str_Search) = ""
+					SetActiveGadget(#g_str_Search)
 				Else
 					SetActiveGadget(*CurrentFile\editor)
 				EndIf
@@ -4288,46 +4423,46 @@ Procedure Event_Gadget()
 	Select Event()
 		Case #PB_Event_Gadget
 			Select EventGadget()
-				Case #g_FilePanel
+				Case #g_pnl_File
 					If EventData() = 0
 						; this his a hack to recognize the active tab under Linux
 						PostEvent(#PB_Event_Gadget, EventWindow(), EventGadget(), #PB_EventType_Change, 1)
 					Else
 						System\state | #STATE_SILENT
-						File_Activate(GetGadgetItemData(#g_FilePanel, GetGadgetState(#g_FilePanel)), -1, #True)
+						File_Activate(GetGadgetItemData(#g_pnl_File, GetGadgetState(#g_pnl_File)), -1, #True)
 						System\state & ~#STATE_SILENT
 					EndIf
-				Case #g_Status, #g_Monitor
+				Case #g_lsv_Status, #g_lsi_Monitor
 					If EventType() = #PB_EventType_LeftDoubleClick
 						System_GotoLine(GetGadgetItemData(EventGadget(), GetGadgetState(EventGadget())))
 						File_Activate(*CurrentFile)
 					EndIf
-				Case #g_Variables
+				Case #g_lsi_Variables
 					If EventType() = #PB_EventType_LeftDoubleClick
-						System_Variable_Change(GetGadgetItemData(#g_Variables, GetGadgetState(#g_Variables)))
+						System_Variable_Change(GetGadgetItemData(#g_lsi_Variables, GetGadgetState(#g_lsi_Variables)))
 					EndIf
-				Case #g_VarSort
+				Case #g_cmb_VarSort
 					System_Update_VarList(Parser\main, #False, #True)
-				Case #g_SubList, #g_FieldList, #g_LabelList
+				Case #g_lsv_Sub, #g_lsv_Field, #g_lsv_Label
 					If EventType() = #PB_EventType_LeftDoubleClick
 						System_GotoLine(GetGadgetItemData(EventGadget(), GetGadgetState(EventGadget())))
 						If *CurrentFile And IsGadget(*CurrentFile\editor)
 							SetActiveGadget(*CurrentFile\editor)
 						EndIf
 					EndIf
-				Case #g_SearchOptions
+				Case #g_btn_SearchOptions
 					DisplayPopupMenu(#m_SearchPopup, WindowID(#w_Main))
-				Case #g_SearchText
+				Case #g_str_Search
 					If *CurrentFile And EventType() = #PB_EventType_LostFocus
-						Scintilla_SearchStart(*CurrentFile\editor, GetGadgetText(#g_SearchText))	
+						Scintilla_SearchStart(*CurrentFile\editor, GetGadgetText(#g_str_Search))	
 					EndIf
-				Case #g_SearchPrev
+				Case #g_btn_SearchPrev
 					PostEvent(#PB_Event_Menu, #w_Main, #m_SearchPrev)
-				Case #g_SearchNext
+				Case #g_btn_SearchNext
 					PostEvent(#PB_Event_Menu, #w_Main, #m_SearchNext)
-				Case #g_SplitterEditorH, #g_SplitterEditorV
+				Case #g_spl_EditorH, #g_spl_EditorV
 					PostEvent(#PB_Event_SizeWindow, #w_Main, 0)
-				Case #g_SplitterMonitor
+				Case #g_spl_Monitor
 					PostEvent(#PB_Event_SizeWindow, #w_Monitor, 0)
 			EndSelect
 	EndSelect
@@ -4375,27 +4510,28 @@ Procedure Event_Window()
 			Select EventWindow()
 				Case #w_Main
 					CompilerIf #PB_Compiler_OS = #PB_OS_Windows
-						ResizeGadget_(#g_SplitterEditorV, 5, ToolBarHeightMain, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+						ResizeGadget_(#g_spl_EditorV, 5, ToolBarHeightMain, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
 					CompilerElse
-						ResizeGadget_(#g_SplitterEditorV, 5, 0, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
+						ResizeGadget_(#g_spl_EditorV, 5, 0, WindowWidth(#w_Main) - 10, WindowHeight(#w_Main) - MenuHeight() - StatusBarHeight(0) - ToolBarHeightMain)
 					CompilerEndIf
-					ResizeGadget_(#g_SectionPanel, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SubContainer), GadgetHeight(#g_SubContainer) - 30)
-					w = GetGadgetState(#g_SplitterEditorV)
-					h = GetGadgetState(#g_SplitterEditorH)
+					ResizeGadget_(#g_pnl_Section, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_cnt_Sub), GadgetHeight(#g_cnt_Sub) - 30)
+					w = GetGadgetState(#g_spl_EditorV)
+					h = GetGadgetState(#g_spl_EditorH)
 					ForEach File()
 						ResizeGadget(File()\editor, 0, 0, w, h)
 					Next
-					ResizeGadget_(#g_SubList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
-					ResizeGadget_(#g_FieldList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
-					ResizeGadget_(#g_LabelList, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_SectionPanel), GadgetHeight(#g_SectionPanel))
+					ResizeGadget_(#g_lsv_Sub, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_pnl_Section), GadgetHeight(#g_pnl_Section))
+					ResizeGadget_(#g_lsv_Field, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_pnl_Section), GadgetHeight(#g_pnl_Section))
+					ResizeGadget_(#g_lsv_Label, #PB_Ignore, #PB_Ignore, GadgetWidth(#g_pnl_Section), GadgetHeight(#g_pnl_Section))
 				Case #w_Monitor
-					ResizeGadget_(#g_SplitterMonitor, 0, ToolBarHeightMonitor, WindowWidth(#w_Monitor), WindowHeight(#w_Monitor) - ToolBarHeightMonitor)
-					ResizeGadget_(#g_VarSort, 5, 5, GadgetWidth(#g_VarContainer) - 10, 25)
-					ResizeGadget_(#g_Variables, 5, 30, GadgetWidth(#g_VarContainer) - 10, GadgetHeight(#g_SplitterMonitor) - 35)
+					ResizeGadget_(#g_spl_Monitor, 0, ToolBarHeightMonitor, WindowWidth(#w_Monitor), WindowHeight(#w_Monitor) - ToolBarHeightMonitor)
+					ResizeGadget_(#g_txt_VarSort, 5, 5, 50, 25)
+					ResizeGadget_(#g_cmb_VarSort, 60, 5, GadgetWidth(#g_cnt_Var) - 65, 25)
+					ResizeGadget_(#g_lsi_Variables, 5, 30, GadgetWidth(#g_cnt_Var) - 10, GadgetHeight(#g_spl_Monitor) - 35)
 				Case #w_Debug
-					ResizeGadget_(#g_Debug, 0, 0, WindowWidth(#w_Debug), WindowHeight(#w_Debug))
+					ResizeGadget_(#g_edi_Debug, 0, 0, WindowWidth(#w_Debug), WindowHeight(#w_Debug))
 				Case #w_Help
-					ResizeGadget_(#g_Help, 5, 5, WindowWidth(#w_Help) - 10, WindowHeight(#w_Help) - 10)
+					ResizeGadget_(#g_web_Help, 5, 5, WindowWidth(#w_Help) - 10, WindowHeight(#w_Help) - 10)
 			EndSelect
 	EndSelect
 EndProcedure
@@ -4461,33 +4597,33 @@ Until System\state & #STATE_QUIT
 
 DataSection
 	ico_file_new:
-	IncludeBinary "_ico/file_new.png"
+	IncludeBinary "_ico" + #PS$ + "file_new.png"
 	ico_file_open:
-	IncludeBinary "_ico/file_open.png"
+	IncludeBinary "_ico" + #PS$ + "file_open.png"
 	ico_file_save:
-	IncludeBinary "_ico/file_save.png"
+	IncludeBinary "_ico" + #PS$ + "file_save.png"
 	ico_file_close:
-	IncludeBinary "_ico/file_close.png"
+	IncludeBinary "_ico" + #PS$ + "file_close.png"
 	ico_undo:
-	IncludeBinary "_ico/undo.png"
+	IncludeBinary "_ico" + #PS$ + "undo.png"
 	ico_redo:
-	IncludeBinary "_ico/redo.png"
+	IncludeBinary "_ico" + #PS$ + "redo.png"
 	ico_compile_run:
-	IncludeBinary "_ico/compile_run.png"
+	IncludeBinary "_ico" + #PS$ + "compile_run.png"
 	ico_compile:
-	IncludeBinary "_ico/compile.png"
+	IncludeBinary "_ico" + #PS$ + "compile.png"
 	ico_run:
-	IncludeBinary "_ico/run.png"
+	IncludeBinary "_ico" + #PS$ + "run.png"
 	ico_step:
-	IncludeBinary "_ico/step.png"
+	IncludeBinary "_ico" + #PS$ + "step.png"
 	ico_stepout:
-	IncludeBinary "_ico/stepout.png"
+	IncludeBinary "_ico" + #PS$ + "stepout.png"
 	ico_monitor:
-	IncludeBinary "_ico/monitor.png"
+	IncludeBinary "_ico" + #PS$ + "monitor.png"
 	ico_help:
-	IncludeBinary "_ico/help.png"
+	IncludeBinary "_ico" + #PS$ + "help.png"
 	ico_copy:
-	IncludeBinary "_ico/copy.png"
+	IncludeBinary "_ico" + #PS$ + "copy.png"
 	
 	Opcodes:
 	;      opcode, nrParams, size, procedure, name
@@ -4516,7 +4652,8 @@ DataSection
 	Data.i #OP_SIN, 0, 1, @OP_SIN() : Data.s "SIN,Sin"
 	Data.i #OP_COS, 0, 1, @OP_COS() : Data.s "COS,Cos"
 	Data.i #OP_RND, 0, 1, @OP_RND() : Data.s "RND,Rnd"
-	Data.i #OP_IFL, 1, 3, @OP_IFL() : Data.s "IFL,Is"
+	Data.i #OP_IST, 0, 2, @OP_IST() : Data.s "IST,True"
+	Data.i #OP_ISF, 0, 2, @OP_ISF() : Data.s "ISF,False"
 	Data.i #OP_IGR, 1, 3, @OP_IGR() : Data.s "IGR,>"
 	Data.i #OP_IGE, 1, 3, @OP_IGE() : Data.s "IGE,>="
 	Data.i #OP_ILO, 1, 3, @OP_ILO() : Data.s "ILO,<"
@@ -4553,18 +4690,20 @@ DataSection
 	Data.i #OP_KEY, 1, 2, @OP_KEY() : Data.s "KEY,Key"
 	Data.i #OP_SNP, 2, 3, @OP_SNP() : Data.s "SNP,Play"
 	Data.i #OP_SNS, 1, 2, @OP_SNS() : Data.s "SNS,PlayState"
+	Data.i #OP_DBGF, 1, 2, @OP_DBGF() : Data.s "DBGF,Debug"
+	Data.i #OP_DBGS, 1, 2, @OP_DBGS() : Data.s "DBGS,Debug"
 	Data.i #OP_DBG, 2, 3, @OP_DBG() : Data.s "DBG,Debug"
 	Data.i #OP_HLT, 0, 1, @OP_HLT() : Data.s "HLT,Halt"
 	Data.i #OP_KIL, 0, 1, @OP_KIL() : Data.s "KIL,Kill"
 	Data.i #OP_END, 0, 1, @OP_END() : Data.s "END,End"
 	Data.i 0, 0, 0, 0
 EndDataSection
-; IDE Options = PureBasic 6.11 LTS Beta 1 (Windows - x64)
-; CursorPosition = 3574
-; FirstLine = 3571
-; Folding = ---------------------------
+; IDE Options = PureBasic 6.11 LTS (Windows - x64)
+; CursorPosition = 2937
+; FirstLine = 2909
+; Folding = ----------------------------
+; Optimizer
 ; EnableXP
 ; DPIAware
 ; UseIcon = _ico\icon.ico
-; Executable = _sho.co_.exe
 ; DisableDebugger
